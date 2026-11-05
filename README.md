@@ -43,7 +43,20 @@ Anyone with the site link can play the same 10 questions on a separate leaderboa
 
 Home (`/`) and Join (`/join`) link to this as **Play for fun (not in the pot)**. Names are 1–24 characters, unique among public players (case-insensitive), and stored HTML-escaped. Sign-ups and edits stop when entries lock. Default cap is 200 public players (admin can change it or close sign-ups). Per-IP limit is 5 sign-ups per 10 minutes on the single worker.
 
-`/live`, `/compare`, pot prizes, snapshots, and the pot CSV include only the six pot players. Startup adds `players.pool` (`pot` or `public`) if it is missing; existing rows become `pot` and keep their tokens and predictions.
+`/live`, `/compare`, pot prizes, snapshots, and the pot CSV include only the six pot players. Startup adds `players.pool` (`pot` or `public`) if it is missing; existing rows become `pot` and keep their tokens and predictions. Startup does not rename players, replace tokens, or rewrite questions, settings, or the 60 stored answers.
+
+## Election night
+
+Preview everything on the demo TV first: Admin → **Reset demo DB**, then **Demo stage 1**, then open `/demo/live`.
+
+| Feature | Where | Night-of note |
+|---------|--------|----------------|
+| Reactions | Emoji row on each ballot and on `/open/live`. Floats on `/live` and `/open/live`. | One tap a second. Bursts collapse into one update. Admin can switch reactions off. |
+| Side bets | Admin creates the question, options, and points, then closes it and sets the answer. Players answer on their ballot while it is open. | Points are added on the public board only, and listed in the side-bet table on `/live`. Pot places, prizes, the frozen snapshot, and the pot CSV stay on the main ballot. |
+| Score chart | **Chart** on `/live` and `/open/live` (`?view=history`). | A point is stored when results are saved. The axis is % counted when that was entered. Public chart shows at most 10 lines. |
+| Ticker | Bottom of both boards. Players post from their ballot (80 characters, one a minute). | Public lines stay on `/open/live` unless you press **Feature on TV**. Hide, delete, or switch the ticker off in admin. |
+| Group vs public | Panel on both boards. | Average of the main ballot for people who submitted. Side bets are not in this average. |
+| Results feed | Admin → Results feed. Leave it **off** until the XML is live. | **Dry run / preview** fetches votes and seats and does not save them. Manual numbers always win. A bad or empty fetch does not clear what you typed. New databases default to a 3 minute interval; an existing database keeps its saved interval (often 90) until you change it. |
 
 ## Health
 

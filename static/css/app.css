@@ -144,3 +144,34 @@ th { color: var(--muted); font-weight: 600; }
 @media (max-width: 700px) {
   .public-row { grid-template-columns: 1fr 1fr; }
 }
+.react-layer { position: fixed; inset: 0; pointer-events: none; z-index: 70; overflow: hidden; }
+.floater {
+  position: absolute; bottom: 8%; font-size: 2rem; animation: floatUp 2.6s ease-out forwards;
+  text-shadow: 0 6px 16px rgba(0,0,0,.45);
+}
+@keyframes floatUp {
+  0% { transform: translateY(0) scale(0.8); opacity: 0; }
+  12% { opacity: 1; }
+  100% { transform: translateY(-62vh) scale(1.15); opacity: 0; }
+}
+.emoji-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.emoji-row button {
+  font-size: 1.5rem; min-width: 52px; min-height: 48px; padding: 6px 10px; background: #152038;
+}
+.ticker {
+  position: fixed; left: 0; right: 0; bottom: 0; height: 36px; z-index: 40;
+  background: rgba(7,11,20,.94); border-top: 1px solid #243860; overflow: hidden;
+  display: flex; align-items: center;
+}
+.ticker-track { display: inline-block; white-space: nowrap; padding-left: 100%; animation: ticker 36s linear infinite; }
+.ticker-item { margin-right: 48px; font-size: 14px; }
+@keyframes ticker { 0% { transform: translateX(0); } 100% { transform: translateX(-100%); } }
+.tv.has-ticker { padding-bottom: 48px; }
+.avg-pair { display: flex; gap: 10px; }
+.avg-pair .prize { padding: 8px; }
+.avg-pair .amt { font-size: 1.2rem; }
+.chart-svg { width: 100%; height: min(52vh, 520px); background: #0c1426; border-radius: 12px; }
+.side-mini { max-height: 180px; overflow: auto; font-size: 13px; }
+.history-only .leader-list, .history-only .side-panel { display: none; }
+.history-panel { display: none; margin-top: 12px; }
+.history-only .history-panel { display: block; }

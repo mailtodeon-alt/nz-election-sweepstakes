@@ -56,7 +56,18 @@ In **Admin → Public players**:
 
 Sign-ups are limited to 5 per IP per 10 minutes (in memory, one gunicorn worker). Names are 1–24 characters, unique ignoring case, and HTML-escaped before they are stored.
 
-On each boot the app adds a `players.pool` column if the live database does not have one. Existing rows default to `pot`. Tokens, names, predictions, and results are not rewritten. Running the migration again does not move a `public` player back into the pot.
+On each boot the app adds a `players.pool` column if the live database does not have one, plus empty tables for side bets, score history, and the ticker. Existing rows default to `pot`. Tokens, names, tie-breaks, question text, and the 60 stored predictions are not rewritten. Settings that are already saved (including the feed interval) are not replaced. Running the migration again does not move a `public` player back into the pot.
+
+## Election night
+
+Reset the demo database and open `/demo/live` before guests arrive. Stage 1–4 fills the chart. The demo board also shows a sample side bet, ticker lines, and the group-vs-public panel. Open a demo personal link to send a reaction. None of that writes to the real six players.
+
+1. **Reactions.** On by default. Each phone can send one emoji a second; the TV receives a single burst, not one event per tap. Switch off under **Reactions and ticker** if the screen gets noisy.
+2. **Side bets.** Create the question with one option per line (Yes / No, or up to eight choices) and a point value. Players answer on their own page while the bet is open. **Set answer** closes it and scores it. Those points show on `/open/live` and in the side-bet list on `/live`. They are not added to pot places, the $100 / $20 prizes, **Freeze election-night snapshot**, or **Export CSV**.
+3. **Chart.** On the TV, press **Chart** (or open `/live?view=history`). Each save of results adds a point, labelled with % counted when you entered one. The public chart keeps the top 10 lines.
+4. **Ticker.** Players post from their ballot: 80 characters, one a minute. Public posts stay on the public board. **Feature on TV** copies one onto `/live`. **Hide** or **Delete** removes a line. The ticker switch clears the bar on both screens.
+5. **Group vs public.** Both boards show the average main-ballot score of people who have submitted. Someone with an empty ballot is left out. Side-bet points are not in this average.
+6. **Auto-refresh.** Leave **Enable auto poll** off until you have tried **Dry run / preview** and the parsed party votes and seats look right. Preview does not save. When you enable it, set the interval to **180** seconds (3 minutes) if the box still shows 90 from the original install. Anything you typed as manual stays, including when the feed is empty or not valid XML.
 
 ## Demo mode
 

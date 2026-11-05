@@ -478,7 +478,7 @@ def test_demo_does_not_leak():
     assert all(r["name"] not in ("LiveLana", "DemoDana") for r in pot["leaderboard"])
     expect(CLIENT.post("/api/admin/demo/reset"), 200)
     after = expect(CLIENT.get("/api/open/state", headers={"X-Demo": "1"}), 200)
-    assert after["leaderboard"] == []
+    assert [r["name"] for r in after["leaderboard"]] == ["Preview Guest"]
     still = expect(CLIENT.get("/api/open/state"), 200)
     assert [r["name"] for r in still["leaderboard"]] == ["LiveLana"]
     assert len(expect(CLIENT.get("/api/state"), 200)["players"]) == 6

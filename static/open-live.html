@@ -32,6 +32,7 @@ body { overflow: hidden; }
 </style>
 </head>
 <body>
+<div id="reactLayer" class="react-layer"></div>
 <div id="leaderTakeover"><div><div class="sub">NEW LEADER</div><div class="big" id="leaderName">—</div></div></div>
 <div class="tv" id="tv">
   <div class="tv-header">
@@ -39,7 +40,9 @@ body { overflow: hidden; }
       <div class="row" style="gap:8px;margin-bottom:6px">
         <span class="pill" id="modePill">LIVE PROVISIONAL</span>
         <span class="pill demo hidden" id="demoPill">DEMO — NOT REAL RESULTS</span>
+        <a class="btn secondary" id="chartBtn" href="?view=history">Chart</a>
       </div>
+      <div class="emoji-row" id="emojiBar" style="margin-top:8px"></div>
       <h1 class="tv-title" id="title">Public leaderboard</h1>
       <div class="tv-sub">For fun · not in the prize pot · <a id="joinLink" href="/open">Get a link</a></div>
     </div>
@@ -55,6 +58,7 @@ body { overflow: hidden; }
       <div class="leader-list" id="leaders"></div>
     </div>
     <div class="side-panel">
+      <div class="card" id="avgCard" style="margin:0"></div>
       <div class="card" style="margin:0">
         <h3 style="margin-top:0">Party vote</h3>
         <div class="party-bars" id="partyBars"></div>
@@ -67,9 +71,17 @@ body { overflow: hidden; }
         <span class="muted">Same questions and scoring as the sweepstakes. Greyed rows are mathematically OUT. No prizes on this board.</span>
       </div>
     </div>
+    <div class="history-panel card">
+      <h3 style="margin-top:0">Score history</h3>
+      <p class="muted">Top 10 public players. Includes side-bet points. Not the prize pot.</p>
+      <svg id="historyChart" class="chart-svg"></svg>
+      <p><a id="boardLink" href="/open/live">Back to the board</a></p>
+    </div>
   </div>
+  <div id="ticker" class="ticker hidden"></div>
 </div>
 <script src="/static/js/common.js"></script>
+<script src="/static/js/night.js"></script>
 <script>
 let prevRanks = {};
 let prevLeaderId = null;
@@ -142,6 +154,13 @@ function render() {
   document.getElementById('updated').textContent = times.length ? times[times.length-1] : '—';
   document.getElementById('countdown').textContent = state.locked
     ? 'ENTRIES LOCKED' : Sweep.fmtCountdown(state.settings.lock_at, state.server_now);
+  const history = new URLSearchParams(location.search).get('view') === 'history';
+  document.getElementById('tv').classList.toggle('history-only', history);
+  document.getElementById('chartBtn').textContent = history ? 'Board' : 'Chart';
+  document.getElementById('chartBtn').href = history ? (Sweep.isDemo ? '/demo/open/live' : '/open/live') : (Sweep.isDemo ? '/demo/open/live?view=history' : '/open/live?view=history');
+  Night.renderAverages(document.getElementById('avgCard'), state.compare_averages);
+  Night.renderTicker(state.settings.ticker_enabled === '0' ? [] : state.ticker);
+  if (history) Night.loadChart('public');
 
   const list = document.getElementById('leaders');
   const doFlip = flipAnimate();
@@ -187,7 +206,7 @@ function render() {
     el.innerHTML = `
       <div class="pos">${place}</div>
       <div><div class="name">${row.name}${outTag}</div>
-        <div class="sub">${row.submitted ? 'Ballot in' : 'No ballot yet'}${maxBits}</div>${bw}</div>
+        <div class="sub">${row.submitted ? 'Ballot in' : 'No ballot yet'}${maxBits}${row.side_points ? ' · +' + row.side_points + ' side' : ''}</div>${bw}</div>
       <div style="text-align:right">
         <div class="pts">${state.locked ? row.total : '—'}</div>
         ${delta}
@@ -226,8 +245,9 @@ async function load() {
   state = await Sweep.api('/api/open/state');
   render();
 }
+Night.emojiBar(document.getElementById('emojiBar'), '');
 load();
-Sweep.subscribe(() => load());
+Sweep.subscribe((msg) => Night.onEvent(msg, load));
 setInterval(() => {
   if (!state) return;
   document.getElementById('countdown').textContent = state.locked

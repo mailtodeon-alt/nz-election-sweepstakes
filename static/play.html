@@ -48,6 +48,20 @@
     <p class="muted" style="font-size:12px;margin-top:8px">Note: if the host restarts the public link, re-open your personal URL once and re-add the icon.</p>
   </div>
 
+  <div class="card" id="reactCard">
+    <h3 style="margin-top:0">Send a reaction</h3>
+    <div class="emoji-row" id="emojiBar"></div>
+  </div>
+  <div class="card" id="sideCard">
+    <h3 style="margin-top:0">Side bets</h3>
+    <div id="sideBets" class="muted">None open.</div>
+  </div>
+  <div class="card" id="talkCard">
+    <h3 style="margin-top:0">Trash talk</h3>
+    <p class="muted" style="margin-top:0">80 characters, one a minute. Public lines stay on the public board unless the host features them on TV.</p>
+    <input id="talk" maxlength="80" placeholder="Keep it short"/>
+    <button id="talkSend" class="secondary" style="margin-top:8px" type="button">Post</button>
+  </div>
   <div id="questions"></div>
   <div class="card tb-box">
     <h3 style="margin-top:0">Tie-breaker</h3>
@@ -65,6 +79,7 @@
   </div>
 </div>
 <script src="/static/js/common.js"></script>
+<script src="/static/js/night.js"></script>
 <script>
 const token = location.pathname.split('/').filter(Boolean).pop();
 
@@ -98,6 +113,9 @@ function render() {
   document.getElementById('name').value = displayName;
   document.getElementById('name').maxLength = publicPlayer ? 24 : 40;
   document.getElementById('funNote').classList.toggle('hidden', !publicPlayer);
+  renderSideBets();
+  document.getElementById('reactCard').classList.toggle('hidden', state.settings.reactions_enabled === '0');
+  document.getElementById('talkCard').classList.toggle('hidden', state.settings.ticker_enabled === '0');
   document.getElementById('tb').value = state.player.tb_national_vote || '';
   document.getElementById('tb').disabled = !!state.locked;
   const pill = document.getElementById('statusPill');
@@ -175,8 +193,57 @@ document.getElementById('save').onclick = async () => {
     Sweep.toast(e.data?.message || e.message);
   }
 };
+function renderSideBets() {
+  const box = document.getElementById('sideBets');
+  const bets = state.side_bets || [];
+  if (!bets.length) { box.textContent = 'None tonight.'; return; }
+  box.innerHTML = '';
+  bets.forEach(b => {
+    const wrap = document.createElement('div');
+    wrap.style.marginBottom = '10px';
+    const title = document.createElement('div');
+    title.style.fontWeight = '700';
+    title.textContent = Night.unescapeHtml(b.prompt) + ' · ' + b.points + ' pts · ' + b.status;
+    wrap.appendChild(title);
+    if (b.answer) {
+      const ans = document.createElement('div');
+      ans.className = 'muted';
+      ans.textContent = 'Answer: ' + b.answer;
+      wrap.appendChild(ans);
+    }
+    const row = document.createElement('div');
+    row.className = 'emoji-row';
+    row.style.marginTop = '6px';
+    (b.choices || []).forEach(choice => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'secondary';
+      btn.textContent = choice;
+      if (b.pick === choice) btn.style.borderColor = 'var(--accent)';
+      btn.disabled = b.status !== 'open';
+      btn.onclick = async () => {
+        try {
+          await Sweep.api('/api/player/' + token + '/side-bets', { method: 'POST', body: JSON.stringify({ side_bet_id: b.id, value: choice }) });
+          Sweep.toast('Side bet saved');
+          await load();
+        } catch (e) { Sweep.toast(e.data?.message || e.message); }
+      };
+      row.appendChild(btn);
+    });
+    wrap.appendChild(row);
+    box.appendChild(wrap);
+  });
+}
+Night.emojiBar(document.getElementById('emojiBar'), token);
+document.getElementById('talkSend').onclick = async () => {
+  try {
+    await Sweep.api('/api/player/' + token + '/ticker', { method: 'POST', body: JSON.stringify({ text: document.getElementById('talk').value }) });
+    document.getElementById('talk').value = '';
+    Sweep.toast('Posted');
+  } catch (e) { Sweep.toast(e.data?.message || e.message); }
+};
 load();
-Sweep.subscribe(() => load());
+Sweep.subscribe((msg) => { if (msg.event === 'heartbeat' || msg.event === 'reactions') return; load(); });
 setInterval(() => { if (state && !state.locked) {
   document.getElementById('statusPill').textContent = 'OPEN · closes ' + Sweep.fmtCountdown(state.lock_at);
 }}, 1000);

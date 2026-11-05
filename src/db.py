@@ -55,7 +55,9 @@ DEFAULT_SETTINGS = {
     "demo_mode": "0",
     "feed_enabled": "0",
     "feed_url": "https://media.election.net.nz/xml/",
-    "feed_poll_seconds": "90",
+    "feed_poll_seconds": "180",
+    "reactions_enabled": "1",
+    "ticker_enabled": "1",
     "reporting_pct": "",
     "prize_first": "100",
     "prize_second": "20",
@@ -293,6 +295,48 @@ def _schema_sql(backend: str) -> str:
         """
 
 
+def _night_tables_sql(backend: str) -> str:
+    id_pk = "SERIAL PRIMARY KEY" if backend == "postgres" else "INTEGER PRIMARY KEY AUTOINCREMENT"
+    return f"""
+        CREATE TABLE IF NOT EXISTS side_bets (
+            id {id_pk},
+            prompt TEXT NOT NULL,
+            choices_json TEXT NOT NULL,
+            points INTEGER NOT NULL DEFAULT 5,
+            status TEXT NOT NULL DEFAULT 'open',
+            answer TEXT,
+            created_at TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1
+        );
+        CREATE TABLE IF NOT EXISTS side_bet_picks (
+            side_bet_id INTEGER NOT NULL,
+            player_id INTEGER NOT NULL,
+            value TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            PRIMARY KEY (side_bet_id, player_id)
+        );
+        CREATE TABLE IF NOT EXISTS score_history (
+            id {id_pk},
+            at TEXT NOT NULL,
+            reporting_pct TEXT,
+            pool TEXT NOT NULL,
+            player_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            total INTEGER NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS ticker_messages (
+            id {id_pk},
+            player_id INTEGER NOT NULL,
+            player_name TEXT NOT NULL,
+            pool TEXT NOT NULL,
+            body TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            hidden INTEGER NOT NULL DEFAULT 0,
+            featured INTEGER NOT NULL DEFAULT 0
+        );
+        """
+
+
 def _ensure_player_columns(conn: Conn) -> None:
     """Idempotent upgrade for databases created before the public pool.
 
@@ -334,8 +378,17 @@ def init_db(demo: bool = False, force_seed_players: bool = True) -> None:
                         conn.execute(s)
                 conn.commit()
 
-            # Add columns on databases created before this build. Safe to run every boot.
+            # Add columns and night tables on databases created before this build.
             _ensure_player_columns(conn)
+            night_sql = _night_tables_sql(conn.backend)
+            if conn.backend == "sqlite":
+                conn.executescript(night_sql)
+            else:
+                for stmt in night_sql.split(";"):
+                    s = stmt.strip()
+                    if s:
+                        conn.execute(s)
+                conn.commit()
 
             for k, v in DEFAULT_SETTINGS.items():
                 if conn.backend == "sqlite":

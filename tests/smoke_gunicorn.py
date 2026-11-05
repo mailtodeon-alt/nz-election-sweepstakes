@@ -124,6 +124,14 @@ def main():
         assert status == 200
         assert "Smoke Sam" in pub_csv
         assert "prize" not in pub_csv.splitlines()[0].split(",")
+        status, body = _call(opener, "POST", base + "/api/reactions", {"emoji": "🎉"})
+        assert status == 200, body
+        status, body = _call(opener, "POST", base + "/api/reactions", {"emoji": "🎉"})
+        assert status == 429, body
+        status, body = _call(opener, "GET", base + "/api/history")
+        assert status == 200
+        status, body = _call(opener, "POST", base + f"/api/player/{token}/ticker", {"text": "x" * 81})
+        assert status == 400, body
         print(f"GUNICORN SMOKE OK on {base}")
     finally:
         proc.terminate()
