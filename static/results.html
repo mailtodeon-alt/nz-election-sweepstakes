@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Results · NZ Election 2026</title>
+<meta name="theme-color" content="#070b14"/>
+<link rel="stylesheet" href="/static/css/app.css"/>
+</head>
+<body>
+<div class="wrap wide" id="resultsApp">
+  <h1>Results</h1>
+  <p class="muted" id="resultsNote">Loading the official count…</p>
+  <div id="resultsHouse"></div>
+  <div id="resultsBefore"></div>
+  <div class="card" style="overflow:auto">
+    <h2 style="margin-top:0">Party vote</h2>
+    <table class="results-table" id="partyTable">
+      <thead>
+        <tr>
+          <th class="party">Party</th><th>Votes</th><th>Now</th><th>2023</th><th>Change</th><th>Seats</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+    <p class="muted">Change is against the 2023 official party vote. Seats on election night come from the official feed.</p>
+  </div>
+  <div class="card">
+    <h2 style="margin-top:0">Electorates</h2>
+    <div class="electorate-tools">
+      <input id="electorateSearch" type="search" placeholder="Search name, candidate, or party" aria-label="Search electorates"/>
+      <select id="electorateRegion" aria-label="Filter by region"><option value="">All regions</option></select>
+    </div>
+    <div id="electorateList"></div>
+  </div>
+</div>
+<script src="/static/js/common.js"></script>
+<script src="/static/js/house.js"></script>
+<script src="/static/js/results.js"></script>
+</body></html>

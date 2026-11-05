@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Live Leaderboard</title>
+<title>Live board · NZ Election 2026</title>
 <meta name="theme-color" content="#070b14"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -44,11 +44,11 @@ body { overflow: hidden; }
         <span class="pill" id="modePill">LIVE PROVISIONAL</span>
         <span class="pill demo hidden" id="demoPill">DEMO — NOT REAL RESULTS</span>
       </div>
-      <nav class="week-tabs" id="weekTabs">
-        <button type="button" data-view="board" class="active">Board</button>
-        <button type="button" data-view="latest">Latest count</button>
-        <button type="button" data-view="estimate">Estimate</button>
-        <button type="button" data-view="ranks">Ranks</button>
+      <nav class="week-tabs" id="weekTabs" role="tablist" aria-label="Board views">
+        <button type="button" role="tab" data-view="board" class="active" aria-selected="true">Board</button>
+        <button type="button" role="tab" data-view="latest" aria-selected="false">Latest count</button>
+        <button type="button" role="tab" data-view="estimate" aria-selected="false">Estimate</button>
+        <button type="button" role="tab" data-view="ranks" aria-selected="false">History</button>
         <a class="btn secondary" id="recapLink" href="/recap">Recap</a>
         <a class="btn secondary" id="coalitionLink" href="/coalition">Coalition</a>
       </nav>
@@ -63,16 +63,20 @@ body { overflow: hidden; }
       <button class="btn secondary sound-toggle" id="soundBtn" title="Toggle leader sound" type="button">🔊 Sound off</button>
     </div>
   </div>
+  <div class="tv-stage">
   <div class="board">
-    <div>
+    <div class="leader-wrap">
       <div class="leader-list" id="leaders"></div>
     </div>
-    <div class="side-panel">
-      <div class="card" style="margin:0">
+  </div>
+  <div class="tv-rail">
+  <div id="houseHero" class="house-hero"></div>
+  <div class="side-panel">
+      <div class="card" id="partyCard" style="margin:0">
         <h3 style="margin-top:0">Party vote</h3>
         <div class="party-bars" id="partyBars"></div>
       </div>
-      <div class="card" style="margin:0">
+      <div class="card" id="derivedCard" style="margin:0">
         <h3 style="margin-top:0">Derived calls</h3>
         <div id="seatsBox" class="muted">Awaiting results…</div>
       </div>
@@ -83,10 +87,14 @@ body { overflow: hidden; }
         <div class="prize"><div class="muted">2nd</div><div class="amt" id="p2">$20</div></div>
         <div class="prize"><div class="muted">Last</div><div class="amt" style="font-size:0.72em;line-height:1.15" id="pLast">On morning dishes 🍽️</div></div>
       </div>
-      <div class="card" style="margin:0;font-size:0.82em">
+      <div class="card" id="pendingNote" style="margin:0;font-size:0.82em">
         <span class="muted">PENDING questions are not scored as zero. Greyed rows are mathematically OUT.</span>
       </div>
     </div>
+  <div id="beforeCount"></div>
+  </div>
+  </div>
+  <div id="newsStrip" class="news-strip"></div>
     <section id="view-latest" class="weekend-view card">
       <h3 style="margin-top:0">Latest count (not the pot result)</h3>
       <p class="muted">This keeps moving after the 11:30pm freeze. It does not change places, prizes, or the frozen snapshot.</p>
@@ -108,10 +116,10 @@ body { overflow: hidden; }
       <svg id="historyChart" class="chart-svg"></svg>
       <p><a id="boardLink" href="?">Back to the board</a></p>
     </div>
-  </div>
   <div id="ticker" class="ticker hidden"></div>
 </div>
 <script src="/static/js/common.js"></script>
+<script src="/static/js/house.js"></script>
 <script src="/static/js/night.js"></script>
 <script>
 let prevRanks = {};
@@ -186,7 +194,9 @@ function showWeekendView(name) {
   tv.classList.remove('view-board', 'view-latest', 'view-estimate', 'view-ranks');
   tv.classList.add('view-' + (name || 'board'));
   document.querySelectorAll('#weekTabs button').forEach(btn => {
-    btn.classList.toggle('active', btn.dataset.view === name);
+    const on = btn.dataset.view === name;
+    btn.classList.toggle('active', on);
+    btn.setAttribute('aria-selected', on ? 'true' : 'false');
   });
 }
 function renderLatest(latest) {
@@ -196,8 +206,8 @@ function renderLatest(latest) {
     '<div class="leader-row"><div class="name">' + p.name + '</div><div class="sub">' +
     p.right + ' right · ' + p.adjacent + ' adjacent · ' + p.wrong + ' wrong · ' + p.pending + ' pending</div></div>'
   ).join('');
-  const ticks = (latest.ticks || []).map(t => (t.reporting_pct || '—') + '% · ' + t.at).join('<br>');
-  box.innerHTML = '<p class="muted">' + (latest.reporting_pct || '—') + '% counted · ' + latest.at + '</p>' + rows +
+  const ticks = (latest.ticks || []).map(t => (t.reporting_pct || '—') + '% · ' + Sweep.formatWhen(t.at)).join('<br>');
+  box.innerHTML = '<p class="muted">' + (latest.reporting_pct || '—') + '% counted · ' + Sweep.formatWhen(latest.at) + '</p>' + rows +
     '<h3>Count over time</h3><div class="muted">' + (ticks || 'No saves yet.') + '</div>';
 }
 function renderEstimate(est) {
@@ -222,7 +232,14 @@ function startWeekendRotate() {
   }, 18000);
 }
 document.querySelectorAll('#weekTabs button').forEach(btn => {
-  btn.onclick = () => showWeekendView(btn.dataset.view);
+  btn.onclick = () => {
+    showWeekendView(btn.dataset.view);
+    const view = btn.dataset.view === 'ranks' ? 'history' : btn.dataset.view;
+    const url = new URL(location.href);
+    if (!view || view === 'board') url.searchParams.delete('view');
+    else url.searchParams.set('view', view);
+    history.replaceState(null, '', url);
+  };
 });
 function render() {
   if (!state) return;
@@ -239,7 +256,7 @@ function render() {
   document.getElementById('reporting').textContent =
     state.settings.reporting_pct ? (state.settings.reporting_pct + '% of voting places') : '—';
   const times = Object.values(state.results).map(r => r.updated_at).filter(Boolean).sort();
-  document.getElementById('updated').textContent = times.length ? times[times.length-1] : '—';
+  document.getElementById('updated').textContent = times.length ? Sweep.formatWhen(times[times.length-1]) : '—';
   document.getElementById('countdown').textContent = state.locked
     ? 'ENTRIES LOCKED' : Sweep.fmtCountdown(state.settings.lock_at, state.server_now);
   const asked = new URLSearchParams(location.search).get('view');
@@ -258,8 +275,14 @@ function render() {
     : 'Biggest mover appears after two saved counts.';
   if (view === 'ranks') Night.loadChart('pot', 'rankChart');
   if (state.settings.weekend_mode === '1') startWeekendRotate();
-  Night.renderAverages(document.getElementById('avgCard'), state.compare_averages);
-  Night.renderSideTable(document.getElementById('sideCard'), state.side_bets, state.side_bet_scores, { potOnlyTable: true });
+  const avgCard = document.getElementById('avgCard');
+  const cmp = state.compare_averages || {};
+  const showAvg = (cmp.pot && cmp.pot.average != null) || (cmp.pub && cmp.pub.average != null);
+  avgCard.hidden = !showAvg;
+  if (showAvg) Night.renderAverages(avgCard, state.compare_averages);
+  const sideCard = document.getElementById('sideCard');
+  sideCard.hidden = !(state.side_bets || []).length;
+  if (!sideCard.hidden) Night.renderSideTable(sideCard, state.side_bets, state.side_bet_scores, { potOnlyTable: true });
   Night.renderTicker(state.settings.ticker_enabled === '0' ? [] : state.ticker);
   if (history) Night.loadChart('pot');
 
@@ -312,9 +335,21 @@ function render() {
     prevRanks[row.player_id] = place;
   });
   doFlip();
+  if (window.House && state.house) {
+    House.mount(document.getElementById('houseHero'), state.house, { tv: true });
+    House.mountBefore(document.getElementById('beforeCount'), state.advance, state.house.has_results);
+    House.mountNews(document.getElementById('newsStrip'), state.headlines);
+  }
 
   const bars = document.getElementById('partyBars');
-  bars.innerHTML = PARTIES.map(p => {
+  const anyVote = PARTIES.some(p => {
+    const r = resultForKey(p.key);
+    return r && r.value !== '' && r.value != null && !Number.isNaN(parseFloat(r.value));
+  });
+  document.getElementById('partyCard').hidden = !anyVote;
+  if (!anyVote) {
+    bars.innerHTML = '';
+  } else bars.innerHTML = PARTIES.map(p => {
     const r = resultForKey(p.key);
     const v = r ? parseFloat(r.value) : null;
     const src = r ? r.source : '';
@@ -331,12 +366,22 @@ function render() {
   const parties = resultForKey('parties_in');
   const bloc = resultForKey('bloc_61');
   const minor = resultForKey('minor_highest');
-  document.getElementById('seatsBox').innerHTML = `
+  const seatsBox = document.getElementById('seatsBox');
+  const derivedCard = document.getElementById('derivedCard');
+  const pendingNote = document.getElementById('pendingNote');
+  if (!most && !parties && !bloc && !minor) {
+    derivedCard.hidden = true;
+    if (pendingNote) pendingNote.hidden = true;
+  } else {
+    derivedCard.hidden = false;
+    if (pendingNote) pendingNote.hidden = false;
+    seatsBox.innerHTML = `
     <div>Most seats: <strong>${most?most.value:'PENDING'}</strong></div>
     <div>Parties in Parliament: <strong>${parties?parties.value:'PENDING'}</strong></div>
     <div>NAT+ACT+NZF 61+: <strong>${bloc?bloc.value:'PENDING'}</strong></div>
     <div>Highest minor: <strong>${minor?minor.value:'PENDING'}</strong></div>
     <div class="muted" style="margin-top:0.4em;font-size:0.82em">* = manual · seats include overhang · last place: On morning dishes 🍽️</div>`;
+  }
 }
 
 async function load() {

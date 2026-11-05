@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
-<title>Your predictions</title>
+<title>Your picks · NZ Election 2026</title>
 <meta name="theme-color" content="#070b14"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -266,7 +266,7 @@ document.getElementById('save').onclick = async () => {
   try {
     await persist();
     Sweep.toast('Saved');
-    document.getElementById('saveMsg').textContent = 'Saved at ' + new Date().toLocaleTimeString();
+    document.getElementById('saveMsg').textContent = 'Saved at ' + Sweep.formatWhen(new Date().toISOString());
     document.getElementById('saveState').textContent = 'Saved';
     await load();
   } catch (e) {

@@ -22,10 +22,17 @@ def base_env() -> dict:
     env["ADMIN_PASSWORD"] = "test-admin"
     env.pop("DATABASE_URL", None)
     env["PYTHONUNBUFFERED"] = "1"
+    env["SWEEP_DISABLE_FETCH"] = "1"
     return env
 
 
 def sqlite_pass() -> None:
+    shell = base_env()
+    shell["DB_PATH"] = str(Path(tempfile.mkdtemp(prefix="sweep-shell-")) / "sweep.db")
+    run("test_shell_cache.py", shell)
+    hub = base_env()
+    hub["DB_PATH"] = str(Path(tempfile.mkdtemp(prefix="sweep-hub-")) / "sweep.db")
+    run("test_hub.py", hub)
     mig = base_env()
     mig["DB_PATH"] = str(Path(tempfile.mkdtemp(prefix="sweep-mig-")) / "legacy.db")
     run("test_migration.py", mig)
@@ -54,6 +61,7 @@ def postgres_pass() -> None:
         admin.execute("CREATE DATABASE sweep_feat")
         admin.execute("CREATE DATABASE sweep_night")
         admin.execute("CREATE DATABASE sweep_weekend")
+        admin.execute("CREATE DATABASE sweep_hub")
     finally:
         admin.close()
     try:
@@ -73,6 +81,10 @@ def postgres_pass() -> None:
         weekend["DATABASE_URL"] = server.get_uri("sweep_weekend")
         weekend.pop("DB_PATH", None)
         run("test_weekend.py", weekend)
+        hub = base_env()
+        hub["DATABASE_URL"] = server.get_uri("sweep_hub")
+        hub.pop("DB_PATH", None)
+        run("test_hub.py", hub)
     finally:
         server.cleanup()
 

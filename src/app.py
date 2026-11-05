@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 import db as D
 import night as N
+import projection as P
 import weekend as W
 from scoring import score_player, rank_players, derive_from_party_table, actual_band_label, BANDS
 from feed import FeedPoller
@@ -37,6 +38,30 @@ _sk = (os.environ.get("SECRET_KEY") or "").strip()
 if not _sk:
     raise RuntimeError("SECRET_KEY environment variable is required")
 app.secret_key = _sk
+
+# Stable for the life of this process. A Render deploy sets RENDER_GIT_COMMIT;
+# without that, boot time still changes the cache name so the previous shell is dropped.
+_APP_STARTED_AT = str(int(time.time()))
+_SW_JS = ROOT / "static" / "sw.js"
+_REVALIDATE_TYPES = {"text/css", "text/javascript", "application/javascript"}
+
+
+def shell_cache_name() -> str:
+    raw = (os.environ.get("RENDER_GIT_COMMIT") or "").strip() or _APP_STARTED_AT
+    safe = "".join(ch for ch in raw if ch.isalnum() or ch in "._-")[:80]
+    return "sweep-shell-" + (safe or _APP_STARTED_AT)
+
+
+@app.after_request
+def _revalidate_shell(resp):
+    """Browsers and the TV must not keep a previous deploy's documents or CSS/JS."""
+    path = request.path or ""
+    if resp.mimetype == "text/html" or path.endswith("manifest.webmanifest") or (
+        path.startswith("/static/") and resp.mimetype in _REVALIDATE_TYPES
+    ):
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
+
 
 # --- SSE hub ---
 _subscribers: list[queue.Queue] = []
@@ -259,7 +284,8 @@ def manifest_root():
 
 @app.get("/sw.js")
 def service_worker():
-    resp = send_from_directory(ROOT / "static", "sw.js", mimetype="application/javascript")
+    script = _SW_JS.read_text(encoding="utf-8").replace("__SW_CACHE_NAME__", shell_cache_name())
+    resp = Response(script, mimetype="application/javascript")
     resp.headers["Service-Worker-Allowed"] = "/"
     resp.headers["Cache-Control"] = "no-cache"
     return resp
@@ -334,6 +360,21 @@ def compare_page():
     return send_from_directory(ROOT / "static", "compare.html")
 
 
+@app.get("/results")
+def results_page():
+    return send_from_directory(ROOT / "static", "results.html")
+
+
+@app.get("/news")
+def news_page():
+    return send_from_directory(ROOT / "static", "news.html")
+
+
+@app.get("/seats")
+def seats_page():
+    return send_from_directory(ROOT / "static", "seats.html")
+
+
 @app.get("/admin")
 def admin_page():
     return send_from_directory(ROOT / "static", "admin.html")
@@ -358,6 +399,9 @@ def demo_pages(rest):
         "recap": "recap.html",
         "open/recap": "recap.html",
         "coalition": "coalition.html",
+        "results": "results.html",
+        "news": "news.html",
+        "seats": "seats.html",
     }
     if rest in mapping:
         return send_from_directory(ROOT / "static", mapping[rest])
@@ -617,6 +661,52 @@ def assemble_state(conn, demo: bool, pool: str) -> dict:
         "projection": W.projection_view(conn, live_ranked, questions),
         "biggest_mover": W.biggest_mover(series),
         "pot_result_frozen": pool == D.POOL_POT and mode in ("frozen", "official") and ranked is not live_ranked,
+        "house": house_payload(conn, settings),
+        "advance": advance_public(settings),
+        "headlines": headlines_public(settings, limit=4),
+    }
+
+
+def _json_setting(settings: dict, key: str, fallback):
+    raw = settings.get(key) or ""
+    if not str(raw).strip():
+        return fallback
+    try:
+        return json.loads(raw)
+    except Exception:
+        return fallback
+
+
+def advance_public(settings: dict) -> dict:
+    return {
+        "votes_2026": settings.get("advance_votes_2026") or "1074416",
+        "as_of": settings.get("advance_as_of") or "2026-11-02",
+        "votes_2023_same": settings.get("advance_votes_2023_same") or "860668",
+        "votes_2020_same": settings.get("advance_votes_2020_same") or "1282028",
+        "votes_2023_total": settings.get("advance_votes_2023_total") or "1368830",
+        "source": "https://elections.nz",
+        "updated_at": settings.get("advance_fetch_ok_at") or "",
+    }
+
+
+def headlines_public(settings: dict, limit: int = 4) -> list:
+    rows = _json_setting(settings, "news_json", [])
+    if not isinstance(rows, list):
+        return []
+    return rows[:limit]
+
+
+def house_payload(conn, settings: dict) -> dict:
+    votes, _seat_totals = W._current_party_numbers(conn)
+    candidate = _json_setting(settings, "candidate_seats_json", {})
+    if not isinstance(candidate, dict):
+        candidate = {}
+    live = P.project_live(votes, candidate)
+    return {
+        "has_results": live is not None,
+        "current": P.current_parliament(settings.get("parliament_2023_json")),
+        "live": live,
+        "poll": P.poll_projection(settings.get("latest_poll_json")),
     }
 
 
@@ -627,6 +717,113 @@ def api_state():
     conn = D.connect(demo)
     try:
         return jsonify(assemble_state(conn, demo, D.POOL_POT))
+    finally:
+        conn.close()
+
+
+@app.get("/api/news")
+def api_news():
+    demo = use_demo()
+    conn = D.connect(demo)
+    try:
+        settings = D.all_settings(conn)
+        rows = _json_setting(settings, "news_json", [])
+        return jsonify({
+            "demo": demo,
+            "items": rows if isinstance(rows, list) else [],
+            "updated_at": settings.get("news_fetch_ok_at") or "",
+        })
+    finally:
+        conn.close()
+
+
+@app.get("/api/results")
+def api_results():
+    demo = use_demo()
+    conn = D.connect(demo)
+    try:
+        settings = D.all_settings(conn)
+        votes, seats = W._current_party_numbers(conn)
+        counts = _json_setting(settings, "vote_counts_json", {})
+        if not isinstance(counts, dict):
+            counts = {}
+        electorates = _json_setting(settings, "electorates_json", [])
+        if not isinstance(electorates, list):
+            electorates = []
+        seen = []
+        for party in list(P.HOUSE_ORDER) + list(votes.keys()) + list(P.OFFICIAL_PCT_2023.keys()):
+            if party in seen:
+                continue
+            if party not in votes and party not in seats and party not in P.OFFICIAL_PCT_2023:
+                continue
+            seen.append(party)
+        rows = []
+        for party in seen:
+            now = votes.get(party)
+            base = P.OFFICIAL_PCT_2023.get(party)
+            change = None
+            if now is not None and base is not None:
+                change = round(float(now) - float(base), 2)
+            rows.append({
+                "party": party,
+                "votes": counts.get(party),
+                "percent": now,
+                "pct_2023": base,
+                "change_2023": change,
+                "seats": seats.get(party),
+            })
+        _f = conn.execute("SELECT last_success_at, last_error FROM feed_status WHERE id=1").fetchone()
+        feed = dict(_f) if _f else {}
+        return jsonify({
+            "demo": demo,
+            "has_results": bool(votes),
+            "reporting_pct": settings.get("reporting_pct") or "",
+            "updated_at": feed.get("last_success_at") or "",
+            "parties": rows,
+            "electorates": electorates,
+            "house": house_payload(conn, settings),
+            "advance": advance_public(settings),
+        })
+    finally:
+        conn.close()
+
+
+@app.get("/api/status")
+def api_status():
+    """Last successful fetch per source. No secrets and no feed URL."""
+    conn = D.connect(False)
+    try:
+        settings = D.all_settings(conn)
+        _f = conn.execute("SELECT * FROM feed_status WHERE id=1").fetchone()
+        feed = dict(_f) if _f else {}
+        news = _json_setting(settings, "news_json", [])
+        sources = _json_setting(settings, "news_sources_json", [])
+        return jsonify({
+            "ok": True,
+            "at": D.iso_now(),
+            "sources": {
+                "results_feed": {
+                    "enabled": D.get_setting(conn, "feed_enabled", "0") == "1",
+                    "interval_seconds": D.get_setting(conn, "feed_poll_seconds", "180") or "180",
+                    "last_success_at": feed.get("last_success_at"),
+                    "last_attempt_at": feed.get("last_attempt_at"),
+                    "last_error": feed.get("last_error") or "",
+                },
+                "advance_voting": {
+                    "total": settings.get("advance_votes_2026") or "",
+                    "as_of": settings.get("advance_as_of") or "",
+                    "last_success_at": settings.get("advance_fetch_ok_at") or "",
+                    "last_error": settings.get("advance_fetch_error") or "",
+                    "source": "https://elections.nz",
+                },
+                "news": {
+                    "count": len(news) if isinstance(news, list) else 0,
+                    "last_success_at": settings.get("news_fetch_ok_at") or "",
+                    "last_error": settings.get("news_fetch_error") or "",
+                    "feeds": sources if isinstance(sources, list) else [],
+                },
+            },
+        })
     finally:
         conn.close()
 
@@ -1252,12 +1449,21 @@ def admin_settings():
             "prize_first", "prize_second", "entry_fee",
             "public_signups_open", "public_player_cap",
             "reactions_enabled", "ticker_enabled", "weekend_mode",
+            "feed_manual_off",
+            "advance_votes_2026", "advance_as_of", "advance_votes_2023_same",
+            "advance_votes_2020_same", "advance_votes_2023_total",
+            "parliament_2023_json",
         }
         if "weekend_mode" in data:
             data["weekend_mode"] = "1" if str(data["weekend_mode"]).strip().lower() in ("1", "true", "yes", "on") else "0"
         for flag in ("reactions_enabled", "ticker_enabled"):
             if flag in data:
                 data[flag] = "1" if str(data[flag]).strip().lower() in ("1", "true", "yes", "on") else "0"
+        if "feed_enabled" in data:
+            flag = str(data.get("feed_enabled") or "").strip().lower()
+            data["feed_enabled"] = "1" if flag in ("1", "true", "yes", "on") else "0"
+            # An admin switch is deliberate. Auto-enable at lock time will not undo it.
+            data["feed_manual_off"] = "0" if data["feed_enabled"] == "1" else "1"
         if "feed_poll_seconds" in data:
             try:
                 secs = int(str(data["feed_poll_seconds"]).strip())
@@ -1680,7 +1886,12 @@ def _build_recap(conn, pool: str) -> dict:
         nat = national_actual_from_results(conn, questions, {k: v["value"] for k, v in D.get_results(conn).items()})
         ranked = enrich_leaderboard(N.public_rows_with_side_bets(ranked, conn, nat), questions)
     mover = W.biggest_mover(N.history_series(conn, pool))
-    return W.recap_from_state(pool, ranked, mover, D.iso_now())
+    payload = W.recap_from_state(pool, ranked, mover, D.iso_now())
+    house = house_payload(conn, D.all_settings(conn))
+    view = house.get("live") or house.get("current") or {}
+    payload["house_seats"] = view.get("seats") or {}
+    payload["house_order"] = view.get("order") or []
+    return payload
 
 
 @app.get("/recap")
@@ -1821,6 +2032,9 @@ def admin_projection():
 def create_app():
     D.init_db(False)
     D.init_db(True)
+    # Tests set SWEEP_DISABLE_FETCH=1 so they do not hit elections.nz or RSS.
+    if os.environ.get("SWEEP_DISABLE_FETCH") != "1":
+        feed_poller.start()
     return app
 
 

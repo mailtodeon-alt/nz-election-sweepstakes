@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Seats in the House · NZ Election 2026</title>
+<meta name="theme-color" content="#070b14"/>
+<link rel="stylesheet" href="/static/css/app.css"/>
+</head>
+<body>
+<div class="wrap wide">
+  <h1>Seats in the House</h1>
+  <p class="muted" id="seatsNote">Loading…</p>
+  <div id="seatsHouse"></div>
+  <div id="seatsBefore"></div>
+</div>
+<script src="/static/js/common.js"></script>
+<script src="/static/js/house.js"></script>
+<script>
+function paint(state) {
+  const house = state.house || {};
+  document.getElementById('seatsNote').textContent = house.has_results
+    ? 'Projected from the provisional party vote, using Sainte-Laguë. It updates on its own as the count moves.'
+    : 'This is the House elected in 2023, including the Port Waikato by-election. It switches to the 2026 count when the first results arrive.';
+  House.mount(document.getElementById('seatsHouse'), house);
+  House.mountBefore(document.getElementById('seatsBefore'), state.advance, house.has_results);
+}
+function load() { Sweep.api('/api/state').then(paint).catch(() => {}); }
+load();
+Sweep.subscribe((msg) => { if (msg.event !== 'heartbeat') load(); });
+</script>
+</body></html>

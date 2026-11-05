@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Latest news · NZ Election 2026</title>
+<meta name="theme-color" content="#070b14"/>
+<link rel="stylesheet" href="/static/css/app.css"/>
+</head>
+<body>
+<div class="wrap wide">
+  <h1>Latest news</h1>
+  <p class="muted">Headlines from public feeds. Each link opens the original article. We do not copy the story.</p>
+  <div id="newsList" class="news-list"></div>
+</div>
+<script src="/static/js/common.js"></script>
+<script src="/static/js/house.js"></script>
+<script>
+function draw(items) {
+  const box = document.getElementById('newsList');
+  box.replaceChildren();
+  if (!items.length) {
+    const p = document.createElement('p');
+    p.className = 'muted';
+    p.textContent = 'Headlines will show here as soon as the feeds respond.';
+    box.appendChild(p);
+    return;
+  }
+  items.forEach((item) => {
+    const a = document.createElement('a');
+    a.className = 'headline';
+    a.href = item.url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    const title = document.createElement('strong');
+    title.textContent = item.title || '';
+    const small = document.createElement('small');
+    const bits = [item.source, House.ago(item.published)].filter(Boolean);
+    small.textContent = bits.join(' · ');
+    if (item.summary) {
+      const sum = document.createElement('div');
+      sum.textContent = item.summary;
+      a.append(title, small, sum);
+    } else {
+      a.append(title, small);
+    }
+    box.appendChild(a);
+  });
+}
+function load() {
+  Sweep.api('/api/news').then((data) => draw(data.items || [])).catch(() => draw([]));
+}
+load();
+Sweep.subscribe((msg) => { if (msg.event === 'news' || msg.event === 'reconnect') load(); });
+</script>
+</body></html>

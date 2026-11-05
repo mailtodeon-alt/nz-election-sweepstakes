@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Coalition watch</title>
+<title>Coalition · NZ Election 2026</title>
 <meta name="theme-color" content="#070b14"/>
 <link rel="stylesheet" href="/static/css/app.css"/>
 </head>
@@ -24,7 +24,7 @@ function draw(events) {
     card.className = 'card';
     const when = document.createElement('div');
     when.className = 'muted';
-    when.textContent = ev.at || '';
+    when.textContent = Sweep.formatWhen(ev.at) || '';
     const title = document.createElement('h3');
     title.textContent = ev.headline || '';
     card.append(when, title);
