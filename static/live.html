@@ -77,9 +77,23 @@ html.tv-fit, html.tv-fit body { overflow: hidden; height: 100%; }
   </div>
   <div class="tv-stage">
   <div class="board">
-    <div class="leader-wrap">
-      <div class="leader-list" id="leaders"></div>
-    </div>
+    <section class="board-half pot-half">
+      <h2 class="pane-label">Sweepstakes · pot players</h2>
+      <div class="leader-wrap">
+        <div class="leader-list" id="leaders"></div>
+      </div>
+    </section>
+    <section class="board-half public-half">
+      <div class="pane-head">
+        <h2 class="pane-label">NZ Election Night Public Leaderboard</h2>
+        <div class="public-tools">
+          <input id="livePlayerSearch" type="search" placeholder="Name" aria-label="Find a public player"/>
+          <button type="button" class="secondary" id="liveShowAll">Show all</button>
+        </div>
+      </div>
+      <p class="muted" id="liveListNote"></p>
+      <div class="leader-list" id="publicLeaders"></div>
+    </section>
   </div>
   <div class="tv-rail">
   <div id="houseHero" class="house-hero"></div>
@@ -133,10 +147,18 @@ html.tv-fit, html.tv-fit body { overflow: hidden; height: 100%; }
 <script src="/static/js/common.js"></script>
 <script src="/static/js/house.js"></script>
 <script src="/static/js/night.js"></script>
+<script src="/static/js/public-board.js"></script>
 <script>
 let prevRanks = {};
 let prevLeaderId = null;
 let state = null;
+let publicState = null;
+const publicBoard = PublicBoard.create({
+  list: document.getElementById('publicLeaders'),
+  note: document.getElementById('liveListNote'),
+  toggle: document.getElementById('liveShowAll'),
+  search: document.getElementById('livePlayerSearch'),
+});
 let soundOn = localStorage.getItem('sweep_sound') === '1';
 const soundBtn = document.getElementById('soundBtn');
 function syncSoundBtn(){ soundBtn.textContent = soundOn ? '🔊 Sound on' : '🔊 Sound off'; }
@@ -287,6 +309,7 @@ function render() {
     ? ('Biggest mover: ' + Night.unescapeHtml(mover.name) + ' ' + mover.from_place + ' → ' + mover.to_place)
     : 'Biggest mover appears after two saved counts.';
   if (view === 'ranks') Night.loadChart('pot', 'rankChart');
+  if (publicState) publicBoard.setPlayers(publicState.leaderboard, !!publicState.locked);
   if (state.settings.weekend_mode === '1') startWeekendRotate();
   const avgCard = document.getElementById('avgCard');
   const cmp = state.compare_averages || {};
@@ -398,7 +421,11 @@ function render() {
 }
 
 async function load() {
-  state = await Sweep.api('/api/state');
+  const pot = Sweep.api('/api/state');
+  const pub = Sweep.api('/api/open/state');
+  state = await pot;
+  publicState = await pub;
+  await publicBoard.resolveMe();
   render();
 }
 load();

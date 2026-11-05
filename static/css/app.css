@@ -144,6 +144,19 @@ body:has(.tv) { padding: 0; }
   display: flex; flex-direction: column; height: auto; overflow: visible;
 }
 .tv.pot-board .leader-row { height: auto; }
+.tv.pot-board .tv-stage .board {
+  display: grid; grid-template-columns: 1fr; gap: 12px; height: auto; overflow: visible;
+}
+.tv.pot-board .board-half { min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+.tv.pot-board .pane-label { margin: 0; font-size: clamp(0.95rem, 1.15vw, 1.2rem); line-height: 1.2; }
+.tv.pot-board .pane-head { display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.tv.pot-board .public-half .public-tools { margin: 0; }
+.tv.pot-board .public-half #liveListNote { margin: 0; }
+@media (min-width: 1024px) {
+  .tv.pot-board .tv-stage .board {
+    grid-template-columns: 1fr 1fr; align-items: start; gap: 10px;
+  }
+}
 .tv.pot-board .news-strip { overflow: visible; flex-wrap: wrap; }
 .tv.public-board {
   height: auto; min-height: 100vh; min-height: 100dvh; overflow: visible;
@@ -527,10 +540,54 @@ body:has(.tv) .burger-icon::after { background: #eef3ff; width: 22px; height: 3p
     overflow: visible;
   }
   .tv.pot-board .tv-rail { display: contents; }
-  .tv.pot-board .house-hero { order: -1; }
+  .tv.pot-board .board { order: 0; }
+  .tv.pot-board .house-hero { order: 4; }
+  .tv.pot-board .side-panel { order: 5; }
+  .tv.pot-board #beforeCount { order: 6; }
   .tv.pot-board .side-panel,
   .tv.pot-board .board,
   .tv.pot-board .leader-wrap { height: auto; overflow: visible; }
+  .tv.pot-board { padding: 8px 10px 12px; }
+  .tv.pot-board .tv-header { gap: 4px; padding-right: 56px; }
+  .tv.pot-board .tv-title { font-size: 1rem; }
+  .tv.pot-board .tv-sub { font-size: 12px; }
+  .tv.pot-board .tv-meta { display: flex; flex-wrap: wrap; gap: 2px 10px; font-size: 12px; }
+  .tv.pot-board .tv-meta > div { margin: 0 !important; }
+  .tv.pot-board .sound-toggle { min-height: 28px; padding: 2px 8px; margin: 0; }
+  .tv.pot-board .board-half { gap: 3px; }
+  .tv.pot-board .pane-label { font-size: 12px; font-weight: 800; }
+  .tv.pot-board .pane-head {
+    flex-direction: row; align-items: center; gap: 6px; min-height: 32px;
+  }
+  .tv.pot-board .pane-head .pane-label {
+    flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tv.pot-board .public-half .public-tools { flex: 0 1 auto; flex-wrap: nowrap; gap: 4px; }
+  .tv.pot-board .public-half .public-tools input {
+    width: 108px; flex: 0 0 108px; min-height: 32px; padding: 4px 8px;
+  }
+  .tv.pot-board .public-half .public-tools button {
+    min-height: 32px; padding: 4px 8px; font-size: 12px; white-space: nowrap;
+  }
+  .tv.pot-board .public-half #liveListNote { font-size: 11px; line-height: 1.2; }
+  .tv.pot-board .leader-list { gap: 3px; }
+  .tv.pot-board .board-half .leader-row {
+    height: 44px; min-height: 44px; max-height: 44px;
+    padding: 0 8px; gap: 6px;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+  }
+  .tv.pot-board .board-half .leader-row > div { display: flex; align-items: center; gap: 6px; min-width: 0; }
+  .tv.pot-board .board-half .leader-row .name {
+    font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .tv.pot-board .board-half .leader-row .pos { font-size: 14px; }
+  .tv.pot-board .board-half .leader-row .pts { font-size: 15px; }
+  .tv.pot-board .board-half .leader-row .sub {
+    display: inline-block; margin: 0; font-size: 10px; line-height: 1.2;
+    padding: 1px 6px; border-radius: 999px; background: #1c2d52; color: #d5e4ff;
+    white-space: nowrap; flex: 0 0 auto;
+  }
+  .tv.pot-board .board-half .leader-row .bw { display: none; }
   .tv.view-latest .tv-stage,
   .tv.view-estimate .tv-stage,
   .tv.view-ranks .tv-stage,
@@ -552,14 +609,22 @@ html.tv-fit .tv.pot-board .tv-rail {
 }
 html.tv-fit .tv.pot-board .tv-stage .board,
 html.tv-fit .tv.pot-board .leader-wrap { height: 100%; }
-html.tv-fit .tv.pot-board .leader-list {
+html.tv-fit .tv.pot-board #leaders {
   display: grid;
   grid-template-rows: repeat(6, minmax(0, 1fr));
   height: 100%;
   min-height: 0;
   overflow: hidden;
 }
-html.tv-fit .tv.pot-board .leader-row { height: 100%; }
+html.tv-fit .tv.pot-board #leaders .leader-row { height: 100%; }
+html.tv-fit .tv.pot-board #publicLeaders {
+  display: flex; flex-direction: column; height: auto; overflow: visible; gap: 2px;
+}
+html.tv-fit .tv.pot-board #publicLeaders .leader-row {
+  height: auto; min-height: 0; max-height: none; padding: 2px 8px;
+}
+html.tv-fit .tv.pot-board .public-half { gap: 4px; }
+html.tv-fit .tv.pot-board .public-half .pane-label { font-size: 1rem; }
 html.tv-fit .tv.pot-board .house-svg { max-height: 22vh; }
 html.tv-fit .tv.pot-board #beforeCount { max-height: none; overflow: visible; }
 html.tv-fit .tv.pot-board .before-count { padding: 8px 10px; font-size: 13px; }
