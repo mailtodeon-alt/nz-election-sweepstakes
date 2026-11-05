@@ -35,8 +35,34 @@ if (Sweep.isDemo) {
 }
 Sweep.api('/api/state').then((s) => House.mount(document.getElementById('houseMount'), s.house, { compact: true })).catch(() => {});
 Sweep.api('/api/recap?pool=' + pool).then(card => {
+  const leader = document.getElementById('leader');
+  const bits = ['total', 'top', 'best', 'worst', 'mover', 'when'];
+  if (card.awaiting) {
+    document.getElementById('kicker').textContent = 'Recap';
+    leader.hidden = true;
+    leader.textContent = '';
+    bits.forEach((id) => {
+      const el = document.getElementById(id);
+      el.hidden = true;
+      el.textContent = '';
+    });
+    let msg = document.getElementById('recapEmpty');
+    if (!msg) {
+      msg = document.createElement('p');
+      msg.id = 'recapEmpty';
+      msg.className = 'recap-empty';
+      document.getElementById('card').appendChild(msg);
+    }
+    msg.hidden = false;
+    msg.textContent = card.message || 'No results yet, recap fills in once counting starts';
+    return;
+  }
+  const empty = document.getElementById('recapEmpty');
+  if (empty) empty.hidden = true;
+  leader.hidden = false;
+  bits.forEach((id) => { document.getElementById(id).hidden = false; });
   document.getElementById('kicker').textContent = card.title || 'Recap';
-  document.getElementById('leader').textContent = card.leader || '—';
+  leader.textContent = card.leader || '—';
   document.getElementById('total').textContent = (card.leader_total == null ? '—' : card.leader_total) + ' pts';
   document.getElementById('top').innerHTML = (card.top || []).map(row =>
     '<div>' + row.place + '. ' + row.name + ' · ' + row.total + '</div>').join('');

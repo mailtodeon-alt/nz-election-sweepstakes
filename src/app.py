@@ -293,36 +293,12 @@ def service_worker():
 
 @app.get("/api/player/<token>/manifest.webmanifest")
 def player_manifest(token):
-    """Per-player manifest so Add to Home Screen opens their ballot."""
-    demo = use_demo()
-    conn = D.connect(demo)
-    try:
-        p = D.player_by_token(conn, token)
-        if not p:
-            return jsonify({"error": "not found"}), 404
-        start = f"/p/{token}"
-        if demo:
-            start = f"/demo/p/{token}"
-        body = {
-            "name": f"Election Sweepstakes 2026 — {p['name']}",
-            "short_name": "Sweepstakes",
-            "description": "NZ Election Night Sweepstakes",
-            "start_url": start,
-            "scope": "/",
-            "display": "standalone",
-            "orientation": "any",
-            "background_color": "#070b14",
-            "theme_color": "#070b14",
-            "icons": [
-                {"src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
-                {"src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
-            ],
-        }
-        resp = jsonify(body)
-        resp.headers["Content-Type"] = "application/manifest+json"
-        return resp
-    finally:
-        conn.close()
+    """Old installs requested a per-player manifest. Always serve the site one.
+
+    start_url stays /, so a home-screen icon cannot open someone else's ballot.
+    The token is ignored and no player row is read.
+    """
+    return send_from_directory(ROOT / "static", "manifest.webmanifest", mimetype="application/manifest+json")
 
 
 @app.get("/")
@@ -1880,17 +1856,58 @@ def _pinned_recap(conn, pool: str):
     return payload
 
 
+def _awaiting_recap(pool: str) -> dict:
+    return {
+        "pool": pool,
+        "title": "Recap",
+        "at": D.iso_now(),
+        "awaiting": True,
+        "message": "No results yet, recap fills in once counting starts",
+        "leader": None,
+        "leader_total": None,
+        "top": [],
+        "best_call": None,
+        "best_points": None,
+        "worst_call": None,
+        "worst_lost": None,
+        "biggest_mover": None,
+    }
+
+
 def _build_recap(conn, pool: str) -> dict:
+    house = house_payload(conn, D.all_settings(conn))
+    view = (house.get("live") if house.get("has_results") else None) or house.get("current") or {}
+    if not house.get("has_results"):
+        payload = _awaiting_recap(pool)
+        payload["house_seats"] = view.get("seats") or {}
+        payload["house_order"] = view.get("order") or []
+        return payload
     ranked, questions, _players, _results = build_leaderboard(conn, pool=pool)
     if pool == D.POOL_PUBLIC:
         nat = national_actual_from_results(conn, questions, {k: v["value"] for k, v in D.get_results(conn).items()})
         ranked = enrich_leaderboard(N.public_rows_with_side_bets(ranked, conn, nat), questions)
     mover = W.biggest_mover(N.history_series(conn, pool))
     payload = W.recap_from_state(pool, ranked, mover, D.iso_now())
-    house = house_payload(conn, D.all_settings(conn))
-    view = house.get("live") or house.get("current") or {}
+    payload["awaiting"] = False
     payload["house_seats"] = view.get("seats") or {}
     payload["house_order"] = view.get("order") or []
+    return payload
+
+
+def _serve_recap(conn, pool: str) -> dict:
+    """Before the count, never crown a leader, including a recap pinned too early."""
+    house = house_payload(conn, D.all_settings(conn))
+    if not house.get("has_results"):
+        payload = _awaiting_recap(pool)
+        view = house.get("current") or {}
+        payload["house_seats"] = view.get("seats") or {}
+        payload["house_order"] = view.get("order") or []
+        payload["pinned"] = False
+        return payload
+    pinned = _pinned_recap(conn, pool)
+    payload = pinned or _build_recap(conn, pool)
+    payload["pinned"] = bool(pinned)
+    payload.setdefault("awaiting", False)
     return payload
 
 
@@ -1915,10 +1932,7 @@ def api_recap():
     pool = D.POOL_PUBLIC if request.args.get("pool") == "public" else D.POOL_POT
     conn = D.connect(demo)
     try:
-        pinned = _pinned_recap(conn, pool)
-        payload = pinned or _build_recap(conn, pool)
-        payload["pinned"] = bool(pinned)
-        return jsonify(payload)
+        return jsonify(_serve_recap(conn, pool))
     finally:
         conn.close()
 
@@ -1930,8 +1944,7 @@ def recap_png():
     pool = D.POOL_PUBLIC if request.path.startswith("/open") or request.args.get("pool") == "public" else D.POOL_POT
     conn = D.connect(demo)
     try:
-        pinned = _pinned_recap(conn, pool)
-        payload = pinned or _build_recap(conn, pool)
+        payload = _serve_recap(conn, pool)
     finally:
         conn.close()
     body = W.render_recap_png(payload)

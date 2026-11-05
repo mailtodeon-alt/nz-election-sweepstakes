@@ -181,13 +181,6 @@ window.Sweep = (function () {
       const saved = JSON.parse(localStorage.getItem(meKey()) || 'null');
       if (saved && saved.token) return saved;
     } catch (e) {}
-    try {
-      const pub = JSON.parse(localStorage.getItem(demo ? 'sweep_public_entry_demo' : 'sweep_public_entry') || 'null');
-      if (pub && pub.path) {
-        const token = String(pub.path).split('/').filter(Boolean).pop();
-        return { token: token, pool: 'public', name: pub.name || '', path: pub.path };
-      }
-    } catch (e) {}
     return null;
   }
   const here = location.pathname.replace(/\/+$/, '') || '/';
@@ -339,22 +332,11 @@ window.Sweep = (function () {
     else if (!ev.shiftKey && document.activeElement === last) { ev.preventDefault(); first.focus(); }
   });
 
-  const parts = location.pathname.split('/').filter(Boolean);
-  const pi = parts.indexOf('p');
-  if (pi >= 0 && parts[pi + 1] && parts[pi + 1] !== 'manifest.webmanifest') {
-    const token = parts[pi + 1];
-    Sweep.api('/api/player/' + encodeURIComponent(token)).then((data) => {
-      const player = data.player || {};
-      const saved = {
-        token: player.token || token,
-        pool: player.pool || 'pot',
-        name: player.name || '',
-        path: location.pathname,
-      };
-      try { localStorage.setItem(meKey(), JSON.stringify(saved)); } catch (e) {}
-      renderList();
-    }).catch(() => {});
-  }
+  Sweep.bindIdentity = function (saved) {
+    if (!saved || !saved.token) return;
+    try { localStorage.setItem(meKey(), JSON.stringify(saved)); } catch (e) {}
+    renderList();
+  };
 
   if (document.querySelector('.tv')) {
     let idle;

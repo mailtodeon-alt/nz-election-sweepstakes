@@ -95,8 +95,9 @@ def main():
         assert status == 200
         status, body = _call(opener, "GET", base + f"/api/player/{token}/manifest.webmanifest")
         manifest = json.loads(body.decode())
-        assert manifest["start_url"] == f"/p/{token}"
-        assert "Smoke Sam" in manifest["name"]
+        assert manifest["start_url"] == "/"
+        assert manifest["short_name"] == "NZ Election"
+        assert "Smoke Sam" not in json.dumps(manifest)
 
         status, body = _call(opener, "GET", base + "/api/state")
         pot = json.loads(body.decode())

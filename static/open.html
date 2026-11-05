@@ -109,6 +109,13 @@ document.getElementById('signupForm').onsubmit = async (ev) => {
     const display = unescapeHtml(res.player.name);
     try {
       localStorage.setItem(KEY, JSON.stringify({ name: display, token: res.player.token, path: path }));
+      const meKey = Sweep.isDemo ? 'sweep_me_demo' : 'sweep_me';
+      const existing = JSON.parse(localStorage.getItem(meKey) || 'null');
+      if (!existing || !existing.token) {
+        localStorage.setItem(meKey, JSON.stringify({
+          token: res.player.token, pool: 'public', name: display, path: path,
+        }));
+      }
     } catch (e) {}
     document.getElementById('issuedUrl').textContent = full;
     document.getElementById('enter').href = path;
