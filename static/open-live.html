@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Public leaderboard</title>
+<title>Public board · NZ Election 2026</title>
 <meta name="theme-color" content="#070b14"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -157,7 +157,7 @@ function render() {
   document.getElementById('reporting').textContent =
     state.settings.reporting_pct ? (state.settings.reporting_pct + '% of voting places') : '—';
   const times = Object.values(state.results).map(r => r.updated_at).filter(Boolean).sort();
-  document.getElementById('updated').textContent = times.length ? times[times.length-1] : '—';
+  document.getElementById('updated').textContent = times.length ? Sweep.formatWhen(times[times.length-1]) : '—';
   document.getElementById('countdown').textContent = state.locked
     ? 'ENTRIES LOCKED' : Sweep.fmtCountdown(state.settings.lock_at, state.server_now);
   const history = new URLSearchParams(location.search).get('view') === 'history';

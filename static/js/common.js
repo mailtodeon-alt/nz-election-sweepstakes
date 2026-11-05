@@ -92,9 +92,32 @@ window.Sweep = (function () {
     if (n.includes('labour')) return '#D82A20';
     if (n.includes('green')) return '#098137';
     if (n.includes('act')) return '#F5C518';
-    if (n.includes('first')) return '#888';
+    if (n.includes('first')) return '#1a1a1a';
     if (n.includes('māori') || n.includes('maori') || n.includes('pati')) return '#B2001D';
     return '#5dd6ff';
+  }
+  function formatWhen(iso, style) {
+    if (!iso) return '';
+    const raw = String(iso).trim();
+    const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
+    const d = new Date(dateOnly ? raw + 'T12:00:00+13:00' : raw);
+    if (isNaN(d.getTime())) return raw;
+    const parts = new Intl.DateTimeFormat('en-NZ', {
+      timeZone: 'Pacific/Auckland',
+      weekday: 'long',
+      day: 'numeric',
+      month: 'long',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    }).formatToParts(d);
+    const get = (type) => (parts.find((p) => p.type === type) || {}).value || '';
+    const clock = (get('hour') + ':' + get('minute') + (get('dayPeriod') || '')).replace(/\s/g, '').toLowerCase();
+    if (style === 'date' || (dateOnly && style !== 'datetime')) {
+      return get('day') + ' ' + get('month') + ' ' + get('year');
+    }
+    return clock + ' ' + get('weekday') + ' ' + get('day') + ' ' + get('month');
   }
   function fmtCountdown(lockAt, nowIso) {
     if (!lockAt) return '';
@@ -115,7 +138,7 @@ window.Sweep = (function () {
     if (mode === 'official') return { text: 'FINAL OFFICIAL', cls: 'official' };
     return { text: 'LIVE PROVISIONAL', cls: 'live' };
   }
-  return { api, toast, subscribe, partyColor, fmtCountdown, boardLabel, isDemo, apiUrl };
+  return { api, toast, subscribe, partyColor, fmtCountdown, formatWhen, boardLabel, isDemo, apiUrl };
 })();
 
 /* A new worker calls skipWaiting + clients.claim. Reload once so an open TV
@@ -199,7 +222,14 @@ window.Sweep = (function () {
   const title = document.createElement('a');
   title.className = 'site-title';
   title.href = pathFor('/');
-  title.textContent = demo ? 'Sweepstakes demo' : 'Sweepstakes';
+  const mark = document.createElement('span');
+  mark.className = 'brand-mark';
+  mark.setAttribute('aria-hidden', 'true');
+  mark.textContent = '✓';
+  title.append(mark, document.createTextNode(demo ? 'NZ Election 2026 · demo' : 'NZ Election 2026'));
+  if (document.title && document.title.indexOf('NZ Election 2026') === -1) {
+    document.title = document.title.replace(/\s·\sNZ Election$/, '') + ' · NZ Election 2026';
+  }
   const burger = document.createElement('button');
   burger.className = 'burger';
   burger.type = 'button';

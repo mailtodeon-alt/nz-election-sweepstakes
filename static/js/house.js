@@ -5,7 +5,7 @@ window.House = (function () {
     Labour: '#D82A20',
     Green: '#098137',
     ACT: '#F5C518',
-    'NZ First': '#111111',
+    'NZ First': '#1a1a1a',
     'Te Pāti Māori': '#B2001D',
     TOP: '#32b5e8',
   };
@@ -16,10 +16,8 @@ window.House = (function () {
   }
   function asOf(iso) {
     if (!iso) return '';
-    const stamp = iso.length === 10 ? iso + 'T00:00:00' : iso;
-    const d = new Date(stamp);
-    if (isNaN(d.getTime())) return iso;
-    return d.toLocaleDateString('en-NZ', { day: 'numeric', month: 'short', year: 'numeric' });
+    if (window.Sweep && Sweep.formatWhen) return Sweep.formatWhen(iso, 'date');
+    return iso;
   }
   function ago(iso) {
     if (!iso) return '';
@@ -57,7 +55,7 @@ window.House = (function () {
     return pts;
   }
   function sequence(view) {
-    const order = view.order || ['Green', 'Labour', 'Te Pāti Māori', 'TOP', 'NZ First', 'National', 'ACT'];
+    const order = view.order || ['Green', 'Te Pāti Māori', 'Labour', 'NZ First', 'National', 'ACT', 'TOP'];
     const seats = view.seats || {};
     const dots = [];
     order.forEach((party) => {
@@ -78,7 +76,19 @@ window.House = (function () {
     svg.setAttribute('class', 'house-svg');
     svg.setAttribute('role', 'img');
     svg.setAttribute('aria-label', view.label + ', ' + view.house + ' seats, ' + view.majority + ' to govern');
-    const r = dots.length > 100 ? 1.55 : 2.1;
+    if (view.majority && pts.length >= view.majority) {
+      const mark = pts[Math.min(view.majority, pts.length) - 1];
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', '100');
+      line.setAttribute('y1', '98');
+      line.setAttribute('x2', mark.x.toFixed(2));
+      line.setAttribute('y2', mark.y.toFixed(2));
+      line.setAttribute('stroke', '#ffd166');
+      line.setAttribute('stroke-width', '0.45');
+      line.setAttribute('stroke-dasharray', '1.2 0.9');
+      svg.appendChild(line);
+    }
+    const r = dots.length > 100 ? 2.15 : 2.6;
     pts.forEach((pt, i) => {
       const party = dots[i];
       const c = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
@@ -86,22 +96,18 @@ window.House = (function () {
       c.setAttribute('cy', pt.y.toFixed(2));
       c.setAttribute('r', r);
       c.setAttribute('fill', party ? (COLORS[party] || '#8fa3c8') : '#2a3548');
-      if (party === 'NZ First') c.setAttribute('stroke', '#d5d5d5');
-      if (party === 'NZ First') c.setAttribute('stroke-width', '0.35');
+      if (party === 'NZ First') {
+        const rim = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+        rim.setAttribute('cx', pt.x.toFixed(2));
+        rim.setAttribute('cy', pt.y.toFixed(2));
+        rim.setAttribute('r', (r + 0.45).toFixed(2));
+        rim.setAttribute('fill', '#e4e4e4');
+        svg.appendChild(rim);
+        c.setAttribute('fill', '#1a1a1a');
+        c.setAttribute('r', r.toFixed(2));
+      }
       svg.appendChild(c);
     });
-    if (view.majority && pts.length >= view.majority) {
-      const mark = pts[view.majority - 1];
-      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      line.setAttribute('x1', '100');
-      line.setAttribute('y1', '98');
-      line.setAttribute('x2', mark.x.toFixed(2));
-      line.setAttribute('y2', mark.y.toFixed(2));
-      line.setAttribute('stroke', '#ffd166');
-      line.setAttribute('stroke-width', '0.6');
-      line.setAttribute('stroke-dasharray', '1.2 0.8');
-      svg.appendChild(line);
-    }
     host.appendChild(svg);
   }
   function legend(host, view) {
@@ -114,7 +120,10 @@ window.House = (function () {
       const span = document.createElement('span');
       const swatch = document.createElement('i');
       swatch.style.background = COLORS[party] || '#8fa3c8';
-      if (party === 'NZ First') swatch.style.boxShadow = 'inset 0 0 0 1px #d5d5d5';
+      if (party === 'NZ First') {
+        swatch.style.background = '#1a1a1a';
+        swatch.style.boxShadow = '0 0 0 1px #e6e6e6';
+      }
       span.append(swatch, document.createTextNode(party + ' ' + n));
       box.appendChild(span);
     });

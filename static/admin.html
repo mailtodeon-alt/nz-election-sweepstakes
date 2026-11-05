@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Admin · Sweepstakes</title>
+<title>Admin · NZ Election 2026</title>
 <meta name="theme-color" content="#070b14"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -371,7 +371,7 @@ async function refresh() {
   });
 
   document.getElementById('audit').innerHTML = (full.audit||[]).map(a =>
-    `${a.at} · ${a.actor} · ${a.action}`).join('<br>');
+    `${Sweep.formatWhen(a.at) || a.at} · ${a.actor} · ${a.action}`).join('<br>');
   document.getElementById('reactionsOn').checked = (full.settings.reactions_enabled || '1') === '1';
   document.getElementById('tickerOn').checked = (full.settings.ticker_enabled || '1') === '1';
   document.getElementById('weekendOn').checked = (full.settings.weekend_mode || '0') === '1';

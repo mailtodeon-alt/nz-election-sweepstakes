@@ -22,7 +22,7 @@
       note.textContent = 'Party vote and electorate leaders appear here from 7pm Saturday, as the official feed updates. Until then this is the current Parliament.';
     } else {
       const pct = data.reporting_pct ? data.reporting_pct + '% of voting places counted' : 'Count underway';
-      note.textContent = pct + (data.updated_at ? ' · updated ' + data.updated_at : '');
+      note.textContent = pct + (data.updated_at ? ' · updated ' + Sweep.formatWhen(data.updated_at) : '');
     }
     const body = document.querySelector('#partyTable tbody');
     body.replaceChildren();

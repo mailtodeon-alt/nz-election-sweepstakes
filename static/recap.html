@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Recap</title>
+<title>Recap · NZ Election 2026</title>
 <meta name="theme-color" content="#070b14"/>
 <link rel="stylesheet" href="/static/css/app.css"/>
 </head>
@@ -44,7 +44,7 @@ Sweep.api('/api/recap?pool=' + pool).then(card => {
   document.getElementById('worst').textContent = 'Worst call: ' + (card.worst_call || '—');
   const m = card.biggest_mover;
   document.getElementById('mover').textContent = m ? ('Biggest mover: ' + m.name + ' ' + m.from_place + ' → ' + m.to_place) : 'Biggest mover: —';
-  document.getElementById('when').textContent = card.at || '';
+  document.getElementById('when').textContent = Sweep.formatWhen(card.at) || '';
 });
 </script>
 </body></html>

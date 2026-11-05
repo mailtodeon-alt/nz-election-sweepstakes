@@ -185,7 +185,7 @@ PARLIAMENT_2023_NOTE = (
     "two-seat Te Pāti Māori overhang). The 25 November 2023 Port Waikato by-election "
     "added one National electorate seat, so the sitting House is 123 and a majority is 62."
 )
-HOUSE_ORDER = ["Green", "Labour", "Te Pāti Māori", "TOP", "NZ First", "National", "ACT"]
+HOUSE_ORDER = ["Green", "Te Pāti Māori", "Labour", "NZ First", "National", "ACT", "TOP"]
 LEFT_BLOC = ("Labour", "Green", "Te Pāti Māori")
 RIGHT_BLOC = ("National", "ACT", "NZ First")
 

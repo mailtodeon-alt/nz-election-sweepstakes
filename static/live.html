@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Live Leaderboard</title>
+<title>Live board · NZ Election 2026</title>
 <meta name="theme-color" content="#070b14"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
@@ -202,8 +202,8 @@ function renderLatest(latest) {
     '<div class="leader-row"><div class="name">' + p.name + '</div><div class="sub">' +
     p.right + ' right · ' + p.adjacent + ' adjacent · ' + p.wrong + ' wrong · ' + p.pending + ' pending</div></div>'
   ).join('');
-  const ticks = (latest.ticks || []).map(t => (t.reporting_pct || '—') + '% · ' + t.at).join('<br>');
-  box.innerHTML = '<p class="muted">' + (latest.reporting_pct || '—') + '% counted · ' + latest.at + '</p>' + rows +
+  const ticks = (latest.ticks || []).map(t => (t.reporting_pct || '—') + '% · ' + Sweep.formatWhen(t.at)).join('<br>');
+  box.innerHTML = '<p class="muted">' + (latest.reporting_pct || '—') + '% counted · ' + Sweep.formatWhen(latest.at) + '</p>' + rows +
     '<h3>Count over time</h3><div class="muted">' + (ticks || 'No saves yet.') + '</div>';
 }
 function renderEstimate(est) {
@@ -252,7 +252,7 @@ function render() {
   document.getElementById('reporting').textContent =
     state.settings.reporting_pct ? (state.settings.reporting_pct + '% of voting places') : '—';
   const times = Object.values(state.results).map(r => r.updated_at).filter(Boolean).sort();
-  document.getElementById('updated').textContent = times.length ? times[times.length-1] : '—';
+  document.getElementById('updated').textContent = times.length ? Sweep.formatWhen(times[times.length-1]) : '—';
   document.getElementById('countdown').textContent = state.locked
     ? 'ENTRIES LOCKED' : Sweep.fmtCountdown(state.settings.lock_at, state.server_now);
   const asked = new URLSearchParams(location.search).get('view');
