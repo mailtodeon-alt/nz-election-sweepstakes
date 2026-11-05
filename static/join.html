@@ -20,6 +20,7 @@
   </div>
   <div class="card" style="text-align:center">
     <p class="muted">Scan this QR to open the join page on another phone, then get your personal link from the host.</p>
+    <p style="margin-top:14px">Not in the six? <a id="funLink" href="/open">Play for fun (not in the pot)</a>.</p>
     <div id="qr" style="display:inline-block;background:#fff;padding:12px;border-radius:12px"></div>
     <p class="muted" id="url" style="word-break:break-all;margin-top:10px"></p>
   </div>
@@ -31,6 +32,7 @@
 </div>
 <script src="/static/js/common.js"></script>
 <script>
+if (Sweep.isDemo) document.getElementById('funLink').href = '/demo/open';
 const joinUrl = location.origin + (Sweep.isDemo ? '/demo/join' : '/join');
 document.getElementById('url').textContent = joinUrl;
 document.getElementById('qr').innerHTML = `<img alt="QR" width="200" height="200" src="/api/qr?url=${encodeURIComponent(joinUrl)}"/>`;

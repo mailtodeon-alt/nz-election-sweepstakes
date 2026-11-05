@@ -27,13 +27,35 @@
       <span class="pill demo hidden" id="demoPill">DEMO DB</span>
       <button class="secondary" id="logout">Log out</button>
       <a class="btn secondary" href="/live" target="_blank">Open TV</a>
-      <a class="btn secondary" href="/api/admin/export.csv">Export CSV</a>
+      <a class="btn secondary" id="potCsv" href="/api/admin/export.csv">Export CSV</a>
     </div>
 
     <div class="card">
       <h3>Players & links</h3>
       <div id="players"></div>
       <p class="muted" style="font-size:12px">Send each person their personal /p/… link. Links are unguessable; regenerating invalidates the old one.</p>
+    </div>
+
+    <div class="card">
+      <h3>Public players</h3>
+      <p class="muted">Play-for-fun entries. They are not in the pot, not on <a href="/live" target="_blank">/live</a>, and not in the pot CSV. Their board is <a id="publicBoard" href="/open/live" target="_blank">/open/live</a>.</p>
+      <div class="grid2">
+        <div>
+          <label style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="publicOpen" style="width:auto"/> Public sign-ups open
+          </label>
+        </div>
+        <div>
+          <label>Public player cap</label>
+          <input id="publicCap" type="number" min="0" max="10000"/>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="savePublic" type="button">Save public settings</button>
+        <a class="btn secondary" id="publicCsv" href="/api/admin/export-public.csv">Export public CSV</a>
+      </div>
+      <p class="muted" id="publicCount" style="margin-top:10px"></p>
+      <div id="publicPlayers"></div>
     </div>
 
     <div class="card">
@@ -164,6 +186,7 @@ async function refresh() {
   document.getElementById('feedPoll').value = full.settings.feed_poll_seconds || '90';
   document.getElementById('feedInfo').textContent =
     `Last success: ${full.feed.last_success_at||'never'} · Last attempt: ${full.feed.last_attempt_at||'—'} · Error: ${full.feed.last_error||'none'}`;
+  document.getElementById('potCsv').href = '/api/admin/export.csv' + (full.demo ? '?demo=1' : '');
 
   // players
   const origin = location.origin;
@@ -189,6 +212,53 @@ async function refresh() {
       await Sweep.api('/api/admin/players/'+el.dataset.regen+'/regenerate-token',{method:'POST'});
       refresh();
     };
+  });
+
+  const pubPrefix = full.demo ? '/demo' : '';
+  document.getElementById('publicBoard').href = pubPrefix + '/open/live';
+  document.getElementById('publicOpen').checked = (full.settings.public_signups_open || '1') === '1';
+  document.getElementById('publicCap').value = full.settings.public_player_cap || '200';
+  document.getElementById('publicCsv').href = '/api/admin/export-public.csv' + (full.demo ? '?demo=1' : '');
+  const pubList = full.public_players || [];
+  document.getElementById('publicCount').textContent =
+    pubList.length + ' public player' + (pubList.length === 1 ? '' : 's') +
+    ' · cap ' + (full.settings.public_player_cap || '200');
+  const pubBox = document.getElementById('publicPlayers');
+  pubBox.innerHTML = '';
+  pubList.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'public-row';
+    const name = document.createElement('input');
+    name.value = p.display_name || p.name || '';
+    name.maxLength = 24;
+    name.onchange = async () => {
+      try {
+        await Sweep.api('/api/admin/players', {method:'POST', body: JSON.stringify({id: p.id, name: name.value})});
+        Sweep.toast('Renamed');
+        refresh();
+      } catch (e) { Sweep.toast(e.data?.message || e.message); }
+    };
+    const sub = document.createElement('span');
+    sub.className = 'pill ' + (p.submitted ? 'live' : 'locked');
+    sub.textContent = p.submitted ? 'IN' : 'WAITING';
+    const score = document.createElement('strong');
+    score.textContent = p.total == null ? '—' : String(p.total);
+    const link = document.createElement('input');
+    link.readOnly = true;
+    link.value = location.origin + pubPrefix + '/p/' + p.token;
+    link.onclick = () => link.select();
+    const rm = document.createElement('button');
+    rm.className = 'danger';
+    rm.type = 'button';
+    rm.textContent = 'Remove';
+    rm.onclick = async () => {
+      if (!confirm('Remove this public player from the board? Their link will stop working.')) return;
+      await Sweep.api('/api/admin/public-players/' + p.id + '/remove', {method:'POST', body:'{}'});
+      Sweep.toast('Removed');
+      refresh();
+    };
+    row.append(name, sub, score, link, rm);
+    pubBox.appendChild(row);
   });
 
   renderPartyTable();
@@ -240,6 +310,16 @@ async function refresh() {
     `${a.at} · ${a.actor} · ${a.action}`).join('<br>');
 }
 
+document.getElementById('savePublic').onclick = async () => {
+  try {
+    await Sweep.api('/api/admin/settings', {method:'POST', body: JSON.stringify({
+      public_signups_open: document.getElementById('publicOpen').checked ? '1' : '0',
+      public_player_cap: document.getElementById('publicCap').value
+    })});
+    Sweep.toast('Public settings saved');
+    refresh();
+  } catch (e) { Sweep.toast(e.data?.message || e.message); }
+};
 document.getElementById('saveLock').onclick = async () => {
   await Sweep.api('/api/admin/settings',{method:'POST',body:JSON.stringify({lock_at: document.getElementById('lockAt').value})});
   Sweep.toast('Lock time saved'); refresh();

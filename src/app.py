@@ -2,6 +2,7 @@
 """NZ Election Night Sweepstakes 2026 — Flask server."""
 from __future__ import annotations
 import csv
+import html
 import io
 import json
 import os
@@ -54,6 +55,55 @@ def broadcast(event: str = "update", data: Any = None):
 
 
 feed_poller = FeedPoller(broadcast_fn=broadcast)
+
+# One gunicorn worker, so an in-memory counter is the sign-up limit.
+# Buckets are per client IP and split between the real DB and demo DB.
+_signup_hits: dict[str, list[float]] = {}
+_signup_lock = threading.Lock()
+SIGNUP_LIMIT = 5
+SIGNUP_WINDOW_SEC = 10 * 60
+
+
+def reset_signup_rate_limits() -> None:
+    with _signup_lock:
+        _signup_hits.clear()
+
+
+def client_ip() -> str:
+    """Client address for the sign-up limit.
+
+    Render's proxy sets X-Forwarded-For to the caller. When that header is
+    absent (local gunicorn, tests), fall back to the socket address.
+    """
+    xff = (request.headers.get("X-Forwarded-For") or "").strip()
+    if xff:
+        ip = xff.split(",")[0].strip()
+    else:
+        ip = (request.remote_addr or "").strip()
+    return (ip or "unknown")[:80]
+
+
+def signup_rate_limited(bucket: str) -> bool:
+    now = time.monotonic()
+    with _signup_lock:
+        hits = [t for t in _signup_hits.get(bucket, []) if now - t < SIGNUP_WINDOW_SEC]
+        if len(hits) >= SIGNUP_LIMIT:
+            _signup_hits[bucket] = hits
+            return True
+        hits.append(now)
+        _signup_hits[bucket] = hits
+        return False
+
+
+def public_cap(conn) -> int:
+    raw = D.get_setting(conn, "public_player_cap", "200") or "200"
+    try:
+        cap = int(str(raw).strip())
+    except ValueError:
+        return 200
+    if cap < 0:
+        return 0
+    return cap
 
 
 def national_actual_from_results(conn, questions, results_values):
@@ -121,9 +171,15 @@ def enrich_leaderboard(ranked, questions):
     return out
 
 
-def build_leaderboard(conn):
+def build_leaderboard(conn, pool=D.POOL_POT):
+    """Score and rank one pool.
+
+    The default is the paid pot. /live, /compare, frozen snapshots, the pot
+    CSV, prizes, and the NEW LEADER takeover all read this and therefore
+    never include public players.
+    """
     questions = D.list_questions(conn)
-    players = D.list_players(conn)
+    players = D.list_players(conn, pool=pool)
     preds = D.get_all_predictions(conn)
     results_raw = D.get_results(conn)
     results_values = {k: v["value"] for k, v in results_raw.items()}
@@ -233,6 +289,16 @@ def join_page():
     return send_from_directory(ROOT / "static", "join.html")
 
 
+@app.get("/open")
+def open_signup_page():
+    return send_from_directory(ROOT / "static", "open.html")
+
+
+@app.get("/open/live")
+def open_live_page():
+    return send_from_directory(ROOT / "static", "open-live.html")
+
+
 @app.get("/p/<token>")
 def play_page(token):
     return send_from_directory(ROOT / "static", "play.html")
@@ -267,6 +333,8 @@ def demo_pages(rest):
         "compare": "compare.html",
         "join": "join.html",
         "admin": "admin.html",
+        "open": "open.html",
+        "open/live": "open-live.html",
     }
     if rest in mapping:
         return send_from_directory(ROOT / "static", mapping[rest])
@@ -356,95 +424,178 @@ def healthz():
         return jsonify({"ok": False, "error": str(e)}), 500
 
 
+def assemble_state(conn, demo: bool, pool: str) -> dict:
+    """Board payload for one pool. Pot and public never share a leaderboard."""
+    settings = D.all_settings(conn)
+    locked = D.entries_locked(conn)
+    questions = D.list_questions(conn)
+    players = D.list_players(conn, pool=pool)
+    results_raw = D.get_results(conn)
+    results_meta = results_raw
+    if locked:
+        ranked, questions, players, results_raw = build_leaderboard(conn, pool=pool)
+        results_meta = results_raw
+    else:
+        ranked = []
+        pending = sum(q["max_points"] for q in questions)
+        for p in players:
+            own = D.get_predictions(conn, p["id"])
+            submitted = any(v not in (None, "") for v in own.values()) or bool(p.get("tb_national_vote"))
+            ranked.append({
+                "player_id": p["id"],
+                "name": p["name"],
+                "slot": p["slot"],
+                "submitted": submitted,
+                "total": 0,
+                "available": 0,
+                "pending_max": pending,
+                "max_possible": pending,
+                "max_possible_now": pending,
+                "still_in_it": True,
+                "is_last": False,
+                "best_call": None,
+                "worst_call": None,
+                "detail": [],
+                "tb_national_vote": None,
+            })
+    if pool == D.POOL_PUBLIC:
+        for row in ranked:
+            row.pop("prize", None)
+            row["is_last"] = False
+    _f = conn.execute("SELECT * FROM feed_status WHERE id=1").fetchone()
+    feed = dict(_f) if _f else {}
+    settings_out = {
+        "event_title": settings.get("event_title"),
+        "lock_at": settings.get("lock_at"),
+        "entries_open": settings.get("entries_open"),
+        "board_mode": settings.get("board_mode"),
+        "reporting_pct": settings.get("reporting_pct"),
+        "most_seats_tie_rule": settings.get("most_seats_tie_rule"),
+        "seats_note": settings.get("seats_note"),
+        "demo_mode": settings.get("demo_mode"),
+        "feed_enabled": settings.get("feed_enabled"),
+    }
+    if pool == D.POOL_POT:
+        settings_out["prize_first"] = settings.get("prize_first")
+        settings_out["prize_second"] = settings.get("prize_second")
+        settings_out["entry_fee"] = settings.get("entry_fee")
+    else:
+        settings_out["public_signups_open"] = settings.get("public_signups_open") or "1"
+    return {
+        "demo": demo,
+        "pool": pool,
+        "settings": settings_out,
+        "locked": locked,
+        "server_now": D.iso_now(),
+        "questions": [
+            {
+                "id": q["id"],
+                "key": q["key"],
+                "label": q["label"],
+                "scoring_type": q["scoring_type"],
+                "max_points": q["max_points"],
+                "sort_order": q["sort_order"],
+                "meta": q["meta"],
+            }
+            for q in questions
+        ],
+        "players": [{"id": p["id"], "name": p["name"], "slot": p["slot"]} for p in players],
+        "leaderboard": ranked,
+        "results": {
+            k: {"value": v["value"], "source": v["source"], "updated_at": v["updated_at"]}
+            for k, v in results_meta.items()
+        },
+        "feed": {
+            "enabled": bool(feed.get("enabled")),
+            "last_success_at": feed.get("last_success_at"),
+            "last_attempt_at": feed.get("last_attempt_at"),
+            "last_error": feed.get("last_error"),
+            "last_payload_summary": feed.get("last_payload_summary"),
+        },
+    }
+
+
 # ---------- public state ----------
 @app.get("/api/state")
-
 def api_state():
     demo = use_demo()
     conn = D.connect(demo)
     try:
-        settings = D.all_settings(conn)
-        locked = D.entries_locked(conn)
-        questions = D.list_questions(conn)
-        players = D.list_players(conn)
-        results_raw = D.get_results(conn)
-        results_meta = results_raw
-        if locked:
-            ranked, questions, players, results_raw = build_leaderboard(conn)
-            results_meta = results_raw
-        else:
-            ranked = []
-            for p in players:
-                own = D.get_predictions(conn, p["id"])
-                submitted = any(v not in (None, "") for v in own.values()) or bool(p.get("tb_national_vote"))
-                ranked.append({
-                    "player_id": p["id"],
-                    "name": p["name"],
-                    "slot": p["slot"],
-                    "submitted": submitted,
-                    "total": 0,
-                    "available": 0,
-                    "pending_max": sum(q["max_points"] for q in questions),
-                    "max_possible": sum(q["max_points"] for q in questions),
-                    "max_possible_now": sum(q["max_points"] for q in questions),
-                    "still_in_it": True,
-                    "is_last": False,
-                    "best_call": None,
-                    "worst_call": None,
-                    "detail": [],
-                    "tb_national_vote": None,
-                })
-        _f = conn.execute("SELECT * FROM feed_status WHERE id=1").fetchone()
-        feed = dict(_f) if _f else {}
-
-        public_players = [{"id": p["id"], "name": p["name"], "slot": p["slot"]} for p in players]
-
-        return jsonify({
-            "demo": demo,
-            "settings": {
-                "event_title": settings.get("event_title"),
-                "lock_at": settings.get("lock_at"),
-                "entries_open": settings.get("entries_open"),
-                "board_mode": settings.get("board_mode"),
-                "reporting_pct": settings.get("reporting_pct"),
-                "prize_first": settings.get("prize_first"),
-                "prize_second": settings.get("prize_second"),
-                "entry_fee": settings.get("entry_fee"),
-                "most_seats_tie_rule": settings.get("most_seats_tie_rule"),
-                "seats_note": settings.get("seats_note"),
-                "demo_mode": settings.get("demo_mode"),
-                "feed_enabled": settings.get("feed_enabled"),
-            },
-            "locked": locked,
-            "server_now": D.iso_now(),
-            "questions": [
-                {
-                    "id": q["id"],
-                    "key": q["key"],
-                    "label": q["label"],
-                    "scoring_type": q["scoring_type"],
-                    "max_points": q["max_points"],
-                    "sort_order": q["sort_order"],
-                    "meta": q["meta"],
-                }
-                for q in questions
-            ],
-            "players": public_players,
-            "leaderboard": ranked,
-            "results": {
-                k: {"value": v["value"], "source": v["source"], "updated_at": v["updated_at"]}
-                for k, v in results_meta.items()
-            },
-            "feed": {
-                "enabled": bool(feed.get("enabled")),
-                "last_success_at": feed.get("last_success_at"),
-                "last_attempt_at": feed.get("last_attempt_at"),
-                "last_error": feed.get("last_error"),
-                "last_payload_summary": feed.get("last_payload_summary"),
-            },
-        })
+        return jsonify(assemble_state(conn, demo, D.POOL_POT))
     finally:
         conn.close()
+
+
+@app.get("/api/open/state")
+def api_open_state():
+    demo = use_demo()
+    conn = D.connect(demo)
+    try:
+        return jsonify(assemble_state(conn, demo, D.POOL_PUBLIC))
+    finally:
+        conn.close()
+
+
+@app.post("/api/open/signup")
+def api_open_signup():
+    """Issue an unguessable personal link for a play-for-fun player."""
+    demo = use_demo()
+    data = request.get_json(force=True, silent=True) or {}
+    cleaned, name_err = D.clean_public_name(data.get("name"))
+    if name_err:
+        return jsonify({"error": "bad_name", "message": name_err}), 400
+    bucket = ("demo:" if demo else "live:") + client_ip()
+    if signup_rate_limited(bucket):
+        return jsonify({
+            "error": "rate_limited",
+            "message": "Too many sign-ups from this network. Try again in a few minutes.",
+        }), 429
+    try:
+        with D.write_txn(demo) as conn:
+            if D.entries_locked(conn):
+                return jsonify({
+                    "error": "entries_locked",
+                    "message": "Entries are locked. Public sign-ups are closed.",
+                }), 403
+            if (D.get_setting(conn, "public_signups_open", "1") or "1") != "1":
+                return jsonify({
+                    "error": "public_closed",
+                    "message": "Public sign-ups are closed.",
+                }), 403
+            if D.public_name_taken(conn, data.get("name")):
+                return jsonify({
+                    "error": "name_taken",
+                    "message": "That name is already taken.",
+                }), 409
+            cap = public_cap(conn)
+            if D.count_players(conn, D.POOL_PUBLIC) >= cap:
+                return jsonify({
+                    "error": "public_cap",
+                    "message": "Public sign-ups are full.",
+                }), 403
+            token = secrets.token_urlsafe(18)
+            slot = D.next_public_slot(conn)
+            conn.execute(
+                "INSERT INTO players(name, token, slot, created_at, pool) VALUES (?,?,?,?,?)",
+                (cleaned, token, slot, D.iso_now(), D.POOL_PUBLIC),
+            )
+            row = conn.execute("SELECT id FROM players WHERE token=?", (token,)).fetchone()
+            pid = row["id"]
+            D.audit(conn, "public", "signup", {"id": pid, "name": cleaned})
+        broadcast("players")
+        prefix = "/demo" if demo else ""
+        return jsonify({
+            "ok": True,
+            "player": {
+                "id": pid,
+                "name": cleaned,
+                "token": token,
+                "pool": D.POOL_PUBLIC,
+                "link": f"{prefix}/p/{token}",
+            },
+        })
+    except Exception as e:
+        return jsonify({"error": "signup_failed", "message": str(e)}), 500
 
 
 @app.get("/api/player/<token>")
@@ -464,7 +615,14 @@ def api_player(token):
         settings = D.all_settings(conn)
         return jsonify({
             "demo": demo,
-            "player": {"id": p["id"], "name": p["name"], "slot": p["slot"], "token": p["token"], "tb_national_vote": p.get("tb_national_vote")},
+            "player": {
+                "id": p["id"],
+                "name": p["name"],
+                "slot": p["slot"],
+                "token": p["token"],
+                "pool": p.get("pool") or D.POOL_POT,
+                "tb_national_vote": p.get("tb_national_vote"),
+            },
             "locked": locked,
             "lock_at": settings.get("lock_at"),
             "server_now": D.iso_now(),
@@ -494,9 +652,21 @@ def api_save_predictions(token):
                 return jsonify({"error": "not found"}), 404
             if D.entries_locked(conn):
                 return jsonify({"error": "entries_locked", "message": "Entries are locked. Predictions cannot be changed."}), 403
-            name = (data.get("name") or "").strip()
-            if name and name != p["name"]:
-                conn.execute("UPDATE players SET name=? WHERE id=?", (name[:40], p["id"]))
+            raw_name = data.get("name")
+            if isinstance(raw_name, str) and raw_name.strip():
+                if (p.get("pool") or D.POOL_POT) == D.POOL_PUBLIC:
+                    current = html.unescape(p["name"])
+                    if raw_name.strip() != current.strip():
+                        cleaned, name_err = D.clean_public_name(raw_name)
+                        if name_err:
+                            return jsonify({"error": "bad_name", "message": name_err}), 400
+                        if D.public_name_taken(conn, raw_name, exclude_id=p["id"]):
+                            return jsonify({"error": "name_taken", "message": "That name is already taken."}), 409
+                        conn.execute("UPDATE players SET name=? WHERE id=?", (cleaned, p["id"]))
+                else:
+                    renamed = raw_name.strip()
+                    if renamed != p["name"]:
+                        conn.execute("UPDATE players SET name=? WHERE id=?", (renamed[:40], p["id"]))
             if "tb_national_vote" in data:
                 tb = data.get("tb_national_vote")
                 tb_s = "" if tb is None or tb == "" else str(tb).strip()
@@ -533,12 +703,25 @@ def admin_full():
     demo = use_demo()
     conn = D.connect(demo)
     try:
-        players = D.list_players(conn, active_only=False)
+        players = D.list_players(conn, active_only=False, pool=D.POOL_POT)
+        preds_all = D.get_all_predictions(conn)
         for p in players:
-            preds = D.get_predictions(conn, p["id"])
+            preds = preds_all.get(p["id"], {})
             p["predictions"] = preds
-            p["submitted"] = any(v not in (None, "") for v in preds.values())
+            p["submitted"] = any(v not in (None, "") for v in preds.values()) or bool(p.get("tb_national_vote"))
             p["link_path"] = f"/p/{p['token']}"
+        public_players = D.list_players(conn, active_only=True, pool=D.POOL_PUBLIC)
+        ranked_pub, _, _, _ = build_leaderboard(conn, pool=D.POOL_PUBLIC)
+        by_pub = {r["player_id"]: r for r in ranked_pub}
+        for p in public_players:
+            preds = preds_all.get(p["id"], {})
+            info = by_pub.get(p["id"], {})
+            p["predictions"] = preds
+            p["submitted"] = any(v not in (None, "") for v in preds.values()) or bool(p.get("tb_national_vote"))
+            p["total"] = info.get("total", 0)
+            p["place"] = info.get("place")
+            p["link_path"] = f"/p/{p['token']}"
+            p["display_name"] = html.unescape(p["name"])
         questions = D.list_questions(conn, active_only=False)
         results = D.get_results(conn)
         settings = D.all_settings(conn)
@@ -549,6 +732,8 @@ def admin_full():
         return jsonify({
             "demo": demo,
             "players": players,
+            "public_players": public_players,
+            "public_player_count": len(public_players),
             "questions": questions,
             "results": results,
             "settings": settings,
@@ -568,31 +753,65 @@ def admin_upsert_player():
     if err:
         return err
     demo = use_demo()
-    conn = D.connect(demo)
+    data = request.get_json(force=True, silent=True) or {}
     try:
-        data = request.get_json(force=True, silent=True) or {}
-        pid = data.get("id")
-        name = (data.get("name") or "").strip() or "Player"
-        if pid:
-            conn.execute("UPDATE players SET name=? WHERE id=?", (name[:40], pid))
-            D.audit(conn, "admin", "rename_player", {"id": pid, "name": name})
-        else:
-            # find free slot 1-6
-            used = {r["slot"] for r in conn.execute("SELECT slot FROM players WHERE active=1")}
-            slot = next((i for i in range(1, 7) if i not in used), None)
-            if slot is None:
-                return jsonify({"error": "max 6 players"}), 400
-            token = secrets.token_urlsafe(18)
-            conn.execute(
-                "INSERT INTO players(name, token, slot, created_at) VALUES (?,?,?,?)",
-                (name[:40], token, slot, D.iso_now()),
-            )
-            D.audit(conn, "admin", "add_player", {"name": name, "slot": slot})
-        conn.commit()
+        with D.write_txn(demo) as conn:
+            pid = data.get("id")
+            if pid:
+                row = conn.execute("SELECT id, pool FROM players WHERE id=?", (pid,)).fetchone()
+                if not row:
+                    return jsonify({"error": "not_found", "message": "Player not found."}), 404
+                if row["pool"] == D.POOL_PUBLIC:
+                    cleaned, name_err = D.clean_public_name(data.get("name"))
+                    if name_err:
+                        return jsonify({"error": "bad_name", "message": name_err}), 400
+                    if D.public_name_taken(conn, data.get("name"), exclude_id=pid):
+                        return jsonify({"error": "name_taken", "message": "That name is already taken."}), 409
+                    conn.execute("UPDATE players SET name=? WHERE id=?", (cleaned, pid))
+                    D.audit(conn, "admin", "rename_player", {"id": pid, "name": cleaned, "pool": "public"})
+                else:
+                    name = (data.get("name") or "").strip() or "Player"
+                    conn.execute("UPDATE players SET name=? WHERE id=?", (name[:40], pid))
+                    D.audit(conn, "admin", "rename_player", {"id": pid, "name": name, "pool": "pot"})
+            else:
+                # Pot only: slots 1–6. Public players sign up themselves.
+                name = (data.get("name") or "").strip() or "Player"
+                used = {r["slot"] for r in conn.execute(
+                    "SELECT slot FROM players WHERE active=1 AND pool=?", (D.POOL_POT,)
+                )}
+                slot = next((i for i in range(1, 7) if i not in used), None)
+                if slot is None:
+                    return jsonify({"error": "max 6 players"}), 400
+                token = secrets.token_urlsafe(18)
+                conn.execute(
+                    "INSERT INTO players(name, token, slot, created_at, pool) VALUES (?,?,?,?,?)",
+                    (name[:40], token, slot, D.iso_now(), D.POOL_POT),
+                )
+                D.audit(conn, "admin", "add_player", {"name": name, "slot": slot})
         broadcast("players")
         return jsonify({"ok": True})
-    finally:
-        conn.close()
+    except Exception as e:
+        return jsonify({"error": "save_failed", "message": str(e)}), 500
+
+
+@app.post("/api/admin/public-players/<int:pid>/remove")
+def admin_remove_public(pid):
+    """Hide a public player. The row and predictions stay in the database."""
+    err = require_admin()
+    if err:
+        return err
+    demo = use_demo()
+    try:
+        with D.write_txn(demo) as conn:
+            row = conn.execute("SELECT id, pool, name FROM players WHERE id=?", (pid,)).fetchone()
+            if not row or row["pool"] != D.POOL_PUBLIC:
+                return jsonify({"error": "not_public", "message": "That is not a public player."}), 404
+            conn.execute("UPDATE players SET active=0 WHERE id=?", (pid,))
+            D.audit(conn, "admin", "remove_public_player", {"id": pid, "name": row["name"]})
+        broadcast("players")
+        return jsonify({"ok": True})
+    except Exception as e:
+        return jsonify({"error": "save_failed", "message": str(e)}), 500
 
 
 @app.post("/api/admin/players/<int:pid>/regenerate-token")
@@ -648,10 +867,22 @@ def admin_settings():
     conn = D.connect(demo)
     try:
         data = request.get_json(force=True, silent=True) or {}
+        if "public_player_cap" in data:
+            try:
+                cap = int(str(data["public_player_cap"]).strip())
+            except (TypeError, ValueError):
+                return jsonify({"error": "bad_cap", "message": "Cap must be a whole number."}), 400
+            if cap < 0 or cap > 10000:
+                return jsonify({"error": "bad_cap", "message": "Cap must be between 0 and 10000."}), 400
+            data["public_player_cap"] = str(cap)
+        if "public_signups_open" in data:
+            flag = str(data["public_signups_open"]).strip().lower()
+            data["public_signups_open"] = "1" if flag in ("1", "true", "yes", "on") else "0"
         allowed = {
             "lock_at", "event_title", "board_mode", "reporting_pct",
             "feed_enabled", "feed_url", "feed_poll_seconds", "demo_mode",
             "prize_first", "prize_second", "entry_fee",
+            "public_signups_open", "public_player_cap",
         }
         for k, v in data.items():
             if k in allowed:
@@ -767,8 +998,9 @@ def admin_snapshot():
         with app.test_request_context("/api/state" + ("?demo=1" if demo else "")):
             # manually build
             pass
-        ranked, questions, players, results_raw = build_leaderboard(conn)
+        ranked, questions, players, results_raw = build_leaderboard(conn, pool=D.POOL_POT)
         payload = {
+            "pool": D.POOL_POT,
             "leaderboard": ranked,
             "results": results_raw,
             "reporting_pct": D.get_setting(conn, "reporting_pct"),
@@ -790,40 +1022,61 @@ def admin_snapshot():
         conn.close()
 
 
-@app.get("/api/admin/export.csv")
-def admin_export():
+def _csv_for_pool(conn, pool: str) -> tuple[str, str]:
+    ranked, questions, players, _results_raw = build_leaderboard(conn, pool=pool)
+    preds = D.get_all_predictions(conn)
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    if pool == D.POOL_POT:
+        header = ["slot", "name", "total", "tb_national_vote", "tb_error", "place", "prize", "still_in_it"]
+        filename = "sweepstakes_export.csv"
+    else:
+        header = ["name", "total", "tb_national_vote", "tb_error", "place", "still_in_it"]
+        filename = "public_results.csv"
+    for q in questions:
+        header.append(f"pred:{q['key']}")
+        header.append(f"pts:{q['key']}")
+    w.writerow(header)
+    by_id = {r["player_id"]: r for r in ranked}
+    for p in players:
+        r = by_id[p["id"]]
+        if pool == D.POOL_POT:
+            row = [p["slot"], p["name"], r["total"], r.get("tb_national_vote"), r.get("tb_error"), r.get("place"), r.get("prize"), r.get("still_in_it")]
+        else:
+            row = [html.unescape(p["name"]), r["total"], r.get("tb_national_vote"), r.get("tb_error"), r.get("place"), r.get("still_in_it")]
+        detail = {str(d["question_id"]): d for d in r["detail"]}
+        predmap = preds.get(p["id"], {})
+        for q in questions:
+            row.append(predmap.get(str(q["id"]), ""))
+            d = detail.get(str(q["id"]), {})
+            row.append(d.get("points") if d.get("points") is not None else "pending")
+        w.writerow(row)
+    return buf.getvalue(), filename
+
+
+def _export_response(demo: bool, pool: str):
     err = require_admin()
     if err:
         return err
-    demo = use_demo()
     conn = D.connect(demo)
     try:
-        ranked, questions, players, results_raw = build_leaderboard(conn)
-        preds = D.get_all_predictions(conn)
-        buf = io.StringIO()
-        w = csv.writer(buf)
-        header = ["slot", "name", "total", "tb_national_vote", "tb_error", "place", "prize", "still_in_it"]
-        for q in questions:
-            header.append(f"pred:{q['key']}")
-            header.append(f"pts:{q['key']}")
-        w.writerow(header)
-        by_id = {r["player_id"]: r for r in ranked}
-        for p in players:
-            r = by_id[p["id"]]
-            row = [p["slot"], p["name"], r["total"], r.get("tb_national_vote"), r.get("tb_error"), r.get("place"), r.get("prize"), r.get("still_in_it")]
-            detail = {d["question_id"]: d for d in r["detail"]}
-            predmap = preds.get(p["id"], {})
-            for q in questions:
-                row.append(predmap.get(str(q["id"]), ""))
-                d = detail.get(str(q["id"]), {})
-                row.append(d.get("points") if d.get("points") is not None else "pending")
-            w.writerow(row)
-        resp = make_response(buf.getvalue())
+        body, filename = _csv_for_pool(conn, pool)
+        resp = make_response(body)
         resp.headers["Content-Type"] = "text/csv"
-        resp.headers["Content-Disposition"] = "attachment; filename=sweepstakes_export.csv"
+        resp.headers["Content-Disposition"] = f"attachment; filename={filename}"
         return resp
     finally:
         conn.close()
+
+
+@app.get("/api/admin/export.csv")
+def admin_export():
+    return _export_response(use_demo(), D.POOL_POT)
+
+
+@app.get("/api/admin/export-public.csv")
+def admin_export_public():
+    return _export_response(use_demo(), D.POOL_PUBLIC)
 
 
 @app.post("/api/admin/demo/reset")

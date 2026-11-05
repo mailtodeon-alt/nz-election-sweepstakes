@@ -30,6 +30,7 @@
     <span class="pill demo hidden" id="demoPill">DEMO</span>
   </div>
   <h1 style="margin:6px 0 4px" id="hello">Your predictions</h1>
+  <p class="muted hidden" id="funNote">Playing for fun — this entry is not in the prize pot.</p>
   <p class="muted" id="sub">Tap a band for each question. Exact band = full points, adjacent band = partial. You can edit until lock.</p>
   <div class="card">
     <label>Your display name</label>
@@ -70,7 +71,7 @@ const token = location.pathname.split('/').filter(Boolean).pop();
 // PWA: player-specific manifest so home-screen icon opens this ballot
 (function(){
   const link = document.getElementById('manifestLink');
-  if (link) link.href = '/api/player/' + token + '/manifest.webmanifest';
+  if (link) link.href = '/api/player/' + encodeURIComponent(token) + '/manifest.webmanifest' + (Sweep.isDemo ? '?demo=1' : '');
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
   let deferred = null;
   window.addEventListener('beforeinstallprompt', (e) => {
@@ -83,10 +84,20 @@ const token = location.pathname.split('/').filter(Boolean).pop();
 let state = null;
 const answers = {}; // qid -> value
 
+function unescapeHtml(s) {
+  const t = document.createElement('textarea');
+  t.innerHTML = s || '';
+  return t.value;
+}
+
 function render() {
   if (!state) return;
-  document.getElementById('hello').textContent = state.player.name + "'s ballot";
-  document.getElementById('name').value = state.player.name;
+  const publicPlayer = state.player.pool === 'public';
+  const displayName = publicPlayer ? unescapeHtml(state.player.name) : state.player.name;
+  document.getElementById('hello').textContent = displayName + "'s ballot";
+  document.getElementById('name').value = displayName;
+  document.getElementById('name').maxLength = publicPlayer ? 24 : 40;
+  document.getElementById('funNote').classList.toggle('hidden', !publicPlayer);
   document.getElementById('tb').value = state.player.tb_national_vote || '';
   document.getElementById('tb').disabled = !!state.locked;
   const pill = document.getElementById('statusPill');

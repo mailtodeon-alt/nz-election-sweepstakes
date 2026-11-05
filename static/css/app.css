@@ -133,3 +133,14 @@ table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { text-align: left; padding: 8px 6px; border-bottom: 1px solid #22345c; }
 th { color: var(--muted); font-weight: 600; }
 .hidden { display: none !important; }
+.link-box {
+  font-family: var(--mono); word-break: break-all; background: #0a1222;
+  border: 1px solid #2a4068; border-radius: 10px; padding: 12px; font-size: 15px;
+}
+.public-row {
+  display: grid; grid-template-columns: 1.2fr 90px 70px 1.4fr auto;
+  gap: 8px; align-items: center; margin-bottom: 8px;
+}
+@media (max-width: 700px) {
+  .public-row { grid-template-columns: 1fr 1fr; }
+}

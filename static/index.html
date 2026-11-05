@@ -23,6 +23,7 @@
     <h3>Jump in</h3>
     <div class="row">
       <a class="btn" href="/join">Join / get your link</a>
+      <a class="btn secondary" id="funLink" href="/open">Play for fun (not in the pot)</a>
       <a class="btn secondary" href="/live">TV Leaderboard</a>
       <a class="btn secondary" href="/compare">Compare</a>
       <a class="btn secondary" href="/admin">Admin</a>
@@ -41,6 +42,7 @@
 </div>
 <script src="/static/js/common.js"></script>
 <script>
+if (Sweep.isDemo) document.getElementById('funLink').href = '/demo/open';
 Sweep.api('/api/state').then(s => {
   document.getElementById('title').textContent = s.settings.event_title || 'Sweepstakes';
   document.getElementById('lockAt').textContent = s.settings.lock_at || '';

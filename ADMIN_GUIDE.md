@@ -14,7 +14,8 @@
 
 1. Read the current public URL from `PUBLIC_URL.txt`.
 2. Home: `/` · Join: `/join` · TV board: `/live` · Compare: `/compare` · Admin: `/admin`
-3. Demo copies of the same pages: `/demo/`, `/demo/live`, `/demo/admin`
+3. Public (not in the pot): sign-up `/open` · public board `/open/live` · each player still uses `/p/<token>`
+4. Demo copies of the same pages: `/demo/`, `/demo/live`, `/demo/admin`, `/demo/open`, `/demo/open/live`
 
 ## First-time setup (before the party)
 
@@ -40,6 +41,22 @@
 - **Default is OFF.** The 2026 feed 404s until counting starts; the exact field layout is not verified for 2026 in this build. Manual entry is fully sufficient.
 - If you enable it on the night and it parses cleanly, values arrive as `AUTO`. Your manual overrides still win.
 - Poll interval: 60–120s recommended (feed CDN cache ~30s).
+
+## Public players (not in the pot)
+
+Home and Join offer **Play for fun (not in the pot)**. Those people are stored with `pool=public`. They answer the same 10 questions, use the same scoring and tie-break, and lock at the same time. They never appear on `/live`, `/compare`, the pot prize panel, frozen/official snapshots, or the pot CSV.
+
+In **Admin → Public players**:
+
+- See each public player, whether they have submitted, and their score.
+- Rename or **Remove** (hides them and frees the name; the row stays in the database so nothing is deleted).
+- **Public sign-ups open** — default on. Off refuses new sign-ups with 403. The lock at 7:00pm also refuses sign-ups and edits.
+- **Cap** — default 200 active public players.
+- **Export public CSV** — public results only, no prize column. The pot **Export CSV** stays the six friends.
+
+Sign-ups are limited to 5 per IP per 10 minutes (in memory, one gunicorn worker). Names are 1–24 characters, unique ignoring case, and HTML-escaped before they are stored.
+
+On each boot the app adds a `players.pool` column if the live database does not have one. Existing rows default to `pot`. Tokens, names, predictions, and results are not rewritten. Running the migration again does not move a `public` player back into the pot.
 
 ## Demo mode
 
