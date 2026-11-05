@@ -17,19 +17,20 @@
   <div class="hero">
     <span class="pill" id="demoPill" style="display:none">DEMO MODE</span>
     <h1 id="title">NZ Election Night Sweepstakes 2026</h1>
-    <p>Six friends, ten calls, one TV. Or play the same questions for fun, outside the money.</p>
+    <p id="statusLine">Entries close <strong id="lockAt">7:00pm NZDT, Sat 7 Nov 2026</strong>.</p>
   </div>
-  <div class="card">
-    <h3>Start here</h3>
-    <div class="row">
-      <a class="btn" href="/join">Join / get your link</a>
-      <a class="btn secondary" id="funLink" href="/open">Play for fun (not in the pot)</a>
-      <a class="btn secondary" href="/live">TV Leaderboard</a>
-      <a class="btn secondary" href="/compare">Compare</a>
-      <a class="btn secondary" href="/admin">Admin</a>
-    </div>
-    <p class="muted" style="margin-top:12px">Entries close <strong id="lockAt">7:00pm NZDT, Sat 7 Nov 2026</strong>. Predictions stay private until then.</p>
+  <div id="homeHouse"></div>
+  <div id="homeBefore"></div>
+  <div class="launcher">
+    <a class="launch-card" id="potCard" href="/join"><strong>In the $20 pot? Open my ballot</strong><span>The six friends. Your link is the way in.</span></a>
+    <a class="launch-card" id="funLink" href="/open"><strong>Just playing for fun? Get your own link</strong><span>Play for fun (not in the pot).</span></a>
+    <a class="launch-card" id="liveCard" href="/live"><strong>Watch the live board</strong><span>The sweepstakes TV, updating through the night.</span></a>
+    <a class="launch-card" id="resultsCard" href="/results"><strong>Results</strong><span>Party vote, seats, and every electorate.</span></a>
+    <a class="launch-card" id="newsCard" href="/news"><strong>Latest news</strong><span>Headlines from RNZ, 1News, the Herald, and Stuff.</span></a>
+    <a class="launch-card" id="coalCard" href="/coalition"><strong>Coalition &amp; results</strong><span>Who can govern, in plain language.</span></a>
   </div>
+  <h2 style="margin:18px 0 8px">Latest headlines</h2>
+  <div id="homeNews" class="news-strip"></div>
   <div class="card">
     <h3>How scoring works</h3>
     <ul class="muted">
@@ -42,16 +43,41 @@
   </div>
 </div>
 <script src="/static/js/common.js"></script>
+<script src="/static/js/house.js"></script>
 <script>
-if (Sweep.isDemo) document.getElementById('funLink').href = '/demo/open';
-Sweep.api('/api/state').then(s => {
+if (Sweep.isDemo) {
+  document.getElementById('funLink').href = '/demo/open';
+  document.getElementById('potCard').href = '/demo/join';
+  document.getElementById('liveCard').href = '/demo/live';
+  document.getElementById('resultsCard').href = '/demo/results';
+  document.getElementById('newsCard').href = '/demo/news';
+  document.getElementById('coalCard').href = '/demo/coalition';
+}
+function paintHome(s) {
   document.getElementById('title').textContent = s.settings.event_title || 'Sweepstakes';
   document.getElementById('lockAt').textContent = s.settings.lock_at || '';
+  const status = document.getElementById('statusLine');
+  status.replaceChildren();
+  status.append(
+    document.createTextNode(s.locked ? 'Entries are locked. ' : 'Entries are open until '),
+  );
+  const strong = document.createElement('strong');
+  strong.id = 'lockAt';
+  strong.textContent = s.locked ? 'Locked' : (s.settings.lock_at || '');
+  status.append(strong);
   if (s.demo) {
     const p = document.getElementById('demoPill');
     p.style.display = 'inline-block'; p.classList.add('demo');
   }
-}).catch(()=>{});
+  const me = (() => { try { return JSON.parse(localStorage.getItem(Sweep.isDemo ? 'sweep_me_demo' : 'sweep_me') || 'null'); } catch (e) { return null; } })();
+  if (me && me.path && me.pool !== 'public') document.getElementById('potCard').href = me.path;
+  House.mount(document.getElementById('homeHouse'), s.house);
+  House.mountBefore(document.getElementById('homeBefore'), s.advance, s.house && s.house.has_results);
+  House.mountNews(document.getElementById('homeNews'), s.headlines);
+}
+function loadHome() { Sweep.api('/api/state').then(paintHome).catch(() => {}); }
+loadHome();
+Sweep.subscribe((msg) => { if (msg.event !== 'heartbeat') loadHome(); });
 </script>
 
 <script>

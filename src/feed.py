@@ -1,16 +1,25 @@
-"""Optional Electoral Commission XML feed poller. Default OFF until verified live."""
+"""Electoral Commission feed, advance-voting totals, and headline refresh.
+
+Results XML stays off until lock time (7pm NZDT on the configured lock_at,
+default Sat 7 Nov 2026), then turns itself on at a 180s interval with backoff.
+Advance voting is polled about every 30 minutes until that lock. Headlines
+refresh about every 5 minutes. A failed fetch never clears the last good value.
+"""
 from __future__ import annotations
 import json
 import threading
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
-from typing import Optional
+from datetime import datetime
+from typing import Any, Optional
 from pathlib import Path
 import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+import advance as ADV
 import db as D
+import newsfeed as NEWS
 
 
 # Known 2026 live media feed (community-documented; 404 until election night).
@@ -79,6 +88,10 @@ class FeedPoller:
         self._stop = threading.Event()
         self.broadcast = broadcast_fn or (lambda *_: None)
         self.on_applied = on_applied
+        self._failures = 0
+        self._results_next = 0.0
+        self._advance_next = 0.0
+        self._news_next = 0.0
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -93,20 +106,91 @@ class FeedPoller:
     def _loop(self):
         while not self._stop.is_set():
             try:
-                self.poll_once()
+                self.tick()
             except Exception as e:
                 self._record_error(str(e))
-            # sleep in chunks so stop is responsive
-            conn = D.connect(False)
-            try:
-                secs = int(D.get_setting(conn, "feed_poll_seconds", "180") or "180")
-            finally:
-                conn.close()
-            secs = max(30, min(secs, 600))
-            for _ in range(secs):
+            for _ in range(15):
                 if self._stop.is_set():
                     break
                 time.sleep(1)
+
+    def tick(self) -> None:
+        """One scheduler pass. Safe to call from tests with the network avoided."""
+        now = time.time()
+        conn = D.connect(False)
+        try:
+            started = maybe_enable_results_feed(conn)
+            if started:
+                conn.commit()
+                self.broadcast("settings")
+            if now >= self._advance_next and not past_lock(conn):
+                self._advance_next = now + 30 * 60
+                self._refresh_advance(conn)
+            if now >= self._news_next:
+                self._news_next = now + 5 * 60
+                self._refresh_news(conn)
+            enabled = D.get_setting(conn, "feed_enabled", "0") == "1"
+        finally:
+            conn.close()
+        if enabled and now >= self._results_next:
+            result = self.poll_once()
+            interval = 180
+            conn = D.connect(False)
+            try:
+                interval = int(D.get_setting(conn, "feed_poll_seconds", "180") or "180")
+            except (TypeError, ValueError):
+                interval = 180
+            finally:
+                conn.close()
+            interval = max(30, min(interval, 600))
+            if result.get("ok"):
+                self._failures = 0
+                self._results_next = time.time() + interval
+            else:
+                self._failures = min(self._failures + 1, 4)
+                self._results_next = time.time() + min(interval * (2 ** self._failures), 900)
+
+    def _refresh_advance(self, conn) -> None:
+        try:
+            parsed = ADV.fetch_advance()
+        except Exception as exc:
+            D.set_setting(conn, "advance_fetch_error", str(exc)[:300])
+            conn.commit()
+            return
+        if not parsed.get("ok"):
+            D.set_setting(conn, "advance_fetch_error", str(parsed.get("error") or "advance fetch failed")[:300])
+            conn.commit()
+            return
+        D.set_setting(conn, "advance_votes_2026", str(int(parsed["votes"])))
+        if parsed.get("as_of"):
+            D.set_setting(conn, "advance_as_of", parsed["as_of"])
+        D.set_setting(conn, "advance_fetch_ok_at", D.iso_now())
+        D.set_setting(conn, "advance_fetch_error", "")
+        conn.commit()
+        self.broadcast("advance")
+
+    def _refresh_news(self, conn) -> None:
+        try:
+            fetched = NEWS.fetch_news()
+        except Exception as exc:
+            D.set_setting(conn, "news_fetch_error", str(exc)[:300])
+            conn.commit()
+            return
+        D.set_setting(conn, "news_sources_json", json.dumps(fetched.get("sources") or []))
+        if not fetched.get("ok"):
+            D.set_setting(conn, "news_fetch_error", "every headline source failed")
+            conn.commit()
+            return
+        try:
+            existing = json.loads(D.get_setting(conn, "news_json", "[]") or "[]")
+        except Exception:
+            existing = []
+        merged = NEWS.merge_items(existing if isinstance(existing, list) else [], fetched.get("items") or [])
+        D.set_setting(conn, "news_json", json.dumps(merged))
+        D.set_setting(conn, "news_fetch_ok_at", D.iso_now())
+        D.set_setting(conn, "news_fetch_error", "")
+        conn.commit()
+        self.broadcast("news")
 
     def _record_error(self, err: str):
         conn = D.connect(False)
@@ -162,14 +246,17 @@ class FeedPoller:
                 conn.commit()
 
             used = None
+            electorates_body = None
             if body is None:
                 body, parties_body, used, err = fetch_feed(url)
                 if body is None:
                     conn.execute("UPDATE feed_status SET last_error=? WHERE id=1", ((err or "no response")[:500],))
                     conn.commit()
                     return {"ok": False, "reason": err or "no response", "votes": {}, "seats": {}}
+                if used:
+                    electorates_body = fetch_url(used.rsplit("/", 1)[0] + "/electorates.xml")
 
-            parsed = parse_election_xml(body, parties_body)
+            parsed = parse_election_xml(body, parties_body, electorates_body)
             if not parsed.get("ok"):
                 conn.execute(
                     "UPDATE feed_status SET last_error=? WHERE id=1",
@@ -217,6 +304,12 @@ class FeedPoller:
 
             if parsed.get("reporting_pct") is not None:
                 D.set_setting(conn, "reporting_pct", str(parsed["reporting_pct"]))
+            if parsed.get("candidate_seats"):
+                D.set_setting(conn, "candidate_seats_json", json.dumps(parsed["candidate_seats"]))
+            if parsed.get("vote_counts"):
+                D.set_setting(conn, "vote_counts_json", json.dumps(parsed["vote_counts"]))
+            if parsed.get("electorates"):
+                D.set_setting(conn, "electorates_json", json.dumps(parsed["electorates"]))
 
             summary = json.dumps({"url": used, "applied": applied, "reporting": parsed.get("reporting_pct")})
             conn.execute(
@@ -227,7 +320,7 @@ class FeedPoller:
             if applied and self.on_applied:
                 self.on_applied(conn)
             conn.commit()
-            if applied:
+            if applied or parsed.get("electorates"):
                 self.broadcast("results")
             return {
                 "ok": True,
@@ -303,7 +396,44 @@ def fetch_feed(url: str) -> tuple[Optional[bytes], Optional[bytes], Optional[str
     return body, parties, used, last_err
 
 
-def parse_election_xml(body: bytes, parties_body: Optional[bytes] = None) -> dict:
+def fetch_url(url: str) -> Optional[bytes]:
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "NZ-Election-Sweepstakes/1.0 (private party; results read-only)"})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            if getattr(resp, "status", 200) != 200:
+                return None
+            return resp.read()
+    except Exception:
+        return None
+
+
+def past_lock(conn) -> bool:
+    """True once the configured lock instant has passed. Does not use the early-lock flag."""
+    lock_at = D.get_setting(conn, "lock_at") or ""
+    try:
+        dt = datetime.fromisoformat(lock_at)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=D.NZ)
+        return D.now_nz() >= dt
+    except Exception:
+        return False
+
+
+def maybe_enable_results_feed(conn) -> bool:
+    """Turn the results feed on at lock time unless an admin has switched it off."""
+    if D.get_setting(conn, "feed_manual_off", "0") == "1":
+        return False
+    if D.get_setting(conn, "feed_enabled", "0") == "1":
+        return False
+    if not past_lock(conn):
+        return False
+    D.set_setting(conn, "feed_enabled", "1")
+    D.set_setting(conn, "feed_poll_seconds", "180")
+    D.audit(conn, "feed", "auto_enable", {"at": D.iso_now()})
+    return True
+
+
+def parse_election_xml(body: bytes, parties_body: Optional[bytes] = None, electorates_body: Optional[bytes] = None) -> dict:
     """Parse EC election XML, including the 2023 archive election.xml shape."""
     try:
         root = ET.fromstring(body)
@@ -317,6 +447,8 @@ def parse_election_xml(body: bytes, parties_body: Optional[bytes] = None) -> dic
 
     votes: dict[str, float] = {}
     seats: dict[str, int] = {}
+    candidate_seats: dict[str, int] = {}
+    vote_counts: dict[str, int] = {}
     reporting = None
 
     counted = root.find(".//percent_voting_places_counted")
@@ -355,6 +487,27 @@ def parse_election_xml(body: bytes, parties_body: Optional[bytes] = None) -> dic
                 seats[name] = int(float(str(seat).strip()))
             except ValueError:
                 pass
+        cand = el.findtext("candidate_seats")
+        if cand is not None and str(cand).strip() != "":
+            try:
+                candidate_seats[name] = int(float(str(cand).strip()))
+            except ValueError:
+                pass
+        raw_votes = el.findtext("votes")
+        if raw_votes is not None and str(raw_votes).strip() != "":
+            try:
+                vote_counts[name] = int(float(str(raw_votes).replace(",", "").strip()))
+            except ValueError:
+                pass
+
+    electorates = parse_electorates(root, pno_map)
+    if electorates_body:
+        try:
+            extra = parse_electorates(ET.fromstring(electorates_body), pno_map)
+        except ET.ParseError:
+            extra = []
+        if extra:
+            electorates = extra
 
     if not votes and not seats:
         return {"ok": False, "error": "XML parsed but no recognised party vote or seat figures", "votes": {}, "seats": {}}
@@ -368,4 +521,82 @@ def parse_election_xml(body: bytes, parties_body: Optional[bytes] = None) -> dic
     for key in ("most_seats", "parties_in", "bloc_61", "minor_highest"):
         if derived.get(key) is not None:
             values[key] = derived[key]
-    return {"ok": True, "values": values, "votes": votes, "seats": seats, "reporting_pct": reporting}
+    return {
+        "ok": True,
+        "values": values,
+        "votes": votes,
+        "seats": seats,
+        "candidate_seats": candidate_seats,
+        "vote_counts": vote_counts,
+        "electorates": electorates,
+        "reporting_pct": reporting,
+    }
+
+
+_MAORI = {
+    "te tai tokerau", "tamaki makaurau", "tāmaki makaurau", "hauraki-waikato",
+    "waiariki", "ikaroa-rawhiti", "ikaroa-rāwhiti", "te tai hauauru", "te tai hauāuru",
+    "te tai tonga",
+}
+
+
+def _region_for(name: str) -> str:
+    key = _norm(name)
+    if key in _MAORI or key.startswith("te tai ") or "māori" in (name or "").lower() or "maori" in key:
+        return "Māori"
+    return "General"
+
+
+def parse_electorates(root: ET.Element, pno_map: dict[str, str]) -> list[dict]:
+    """Leading candidate, party, margin and percent counted for each electorate."""
+    found = []
+    for el in root.iter():
+        if el.tag.split("}")[-1].lower() != "electorate":
+            continue
+        name = (
+            el.findtext("electorate_name")
+            or el.findtext("name")
+            or el.attrib.get("name")
+            or el.attrib.get("electorate_name")
+            or ""
+        ).strip()
+        if not name:
+            continue
+        counted = None
+        for node in el.iter():
+            if node.tag.split("}")[-1].lower() == "percent_voting_places_counted" and (node.text or "").strip():
+                try:
+                    counted = float(node.text.strip())
+                except ValueError:
+                    counted = None
+        cands = []
+        for node in el.iter():
+            if node.tag.split("}")[-1].lower() != "candidate":
+                continue
+            if node.find("candidate") is not None and node is not el:
+                pass
+            cname = (node.findtext("candidate_name") or node.findtext("name") or node.attrib.get("name") or "").strip()
+            party_raw = (node.findtext("party") or node.findtext("party_name") or node.attrib.get("party") or "").strip()
+            pno = node.attrib.get("p_no") or node.attrib.get("pno")
+            party = (pno_map.get(str(pno)) if pno else None) or canonical_party(party_raw) or party_raw
+            votes_text = node.findtext("votes") or node.attrib.get("votes") or ""
+            try:
+                votes = int(float(str(votes_text).replace(",", "").strip() or "0"))
+            except ValueError:
+                votes = 0
+            if cname:
+                cands.append({"name": cname, "party": party, "votes": votes})
+        cands.sort(key=lambda c: c["votes"], reverse=True)
+        leader = cands[0] if cands else {"name": "", "party": "", "votes": 0}
+        second = cands[1]["votes"] if len(cands) > 1 else 0
+        found.append({
+            "name": name,
+            "region": _region_for(name),
+            "leader": leader["name"],
+            "party": leader["party"],
+            "votes": leader["votes"],
+            "margin": max(0, leader["votes"] - second) if cands else None,
+            "counted": counted,
+        })
+    found.sort(key=lambda row: row["name"])
+    return found

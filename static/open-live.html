@@ -53,6 +53,8 @@ body { overflow: hidden; }
       <div>Updated <span id="updated">—</span></div>
     </div>
   </div>
+  <div id="houseHero" class="house-hero"></div>
+  <div id="beforeCount"></div>
   <div class="board">
     <div>
       <div class="leader-list" id="leaders"></div>
@@ -81,6 +83,7 @@ body { overflow: hidden; }
   <div id="ticker" class="ticker hidden"></div>
 </div>
 <script src="/static/js/common.js"></script>
+<script src="/static/js/house.js"></script>
 <script src="/static/js/night.js"></script>
 <script>
 let prevRanks = {};
@@ -215,6 +218,10 @@ function render() {
     prevRanks[row.player_id] = place;
   });
   doFlip();
+  if (window.House && state.house) {
+    House.mount(document.getElementById('houseHero'), state.house);
+    House.mountBefore(document.getElementById('beforeCount'), state.advance, state.house.has_results);
+  }
 
   const bars = document.getElementById('partyBars');
   bars.innerHTML = PARTIES.map(p => {

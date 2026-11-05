@@ -108,6 +108,20 @@
       <button class="secondary" id="addQ">Add question</button>
     </div>
 
+    <div class="card" id="autoCard">
+      <h3>Automatic updates</h3>
+      <p class="muted">Nothing here needs typing. Advance voting, headlines, and the results feed update on their own. The feed switches on at the lock time (7pm Saturday) and then polls every 3 minutes.</p>
+      <p class="muted" id="autoInfo">Checking…</p>
+      <details>
+        <summary class="muted">Safety net — only if a fetch is wrong</summary>
+        <div class="grid2" style="margin-top:8px">
+          <div><label>2026 advance votes</label><input id="advVotes" inputmode="numeric"/></div>
+          <div><label>As of (YYYY-MM-DD)</label><input id="advDate"/></div>
+        </div>
+        <button type="button" class="secondary" id="saveAdvance" style="margin-top:8px">Save advance figures</button>
+      </details>
+    </div>
+
     <div class="card" id="feedCard">
       <h3>Results feed</h3>
       <p class="muted">Stays <strong>off</strong> until you enable it. Default interval for a new database is 3 minutes (180s). Manual values are never overwritten. A bad fetch does not clear what you typed.</p>
@@ -232,6 +246,8 @@ async function refresh() {
   document.getElementById('feedEnabled').checked = full.settings.feed_enabled === '1';
   document.getElementById('feedUrl').value = full.settings.feed_url || '';
   document.getElementById('feedPoll').value = full.settings.feed_poll_seconds || '90';
+  document.getElementById('advVotes').value = full.settings.advance_votes_2026 || '';
+  document.getElementById('advDate').value = full.settings.advance_as_of || '';
   document.getElementById('feedInfo').textContent =
     `Last success: ${full.feed.last_success_at||'never'} · Last attempt: ${full.feed.last_attempt_at||'—'} · Error: ${full.feed.last_error||'none'}`;
   document.getElementById('potCsv').href = '/api/admin/export.csv' + (full.demo ? '?demo=1' : '');
@@ -404,6 +420,24 @@ document.getElementById('officialBtn').onclick = async () => {
   await Sweep.api('/api/admin/snapshot',{method:'POST',body:JSON.stringify({kind:'official',label:'Official results'})});
   Sweep.toast('Official snapshot'); refresh();
 };
+document.getElementById('saveAdvance').onclick = async () => {
+  await Sweep.api('/api/admin/settings', {method:'POST', body: JSON.stringify({
+    advance_votes_2026: document.getElementById('advVotes').value,
+    advance_as_of: document.getElementById('advDate').value
+  })});
+  Sweep.toast('Saved advance figures');
+  refresh();
+};
+fetch('/api/status').then(r => r.json()).then(s => {
+  const src = s.sources || {};
+  const el = document.getElementById('autoInfo');
+  if (!el) return;
+  el.textContent = [
+    'Advance: ' + ((src.advance_voting && src.advance_voting.total) || '—') + ' as of ' + ((src.advance_voting && src.advance_voting.as_of) || '—'),
+    'News: ' + ((src.news && src.news.count) || 0) + ' headlines',
+    'Results feed: ' + ((src.results_feed && src.results_feed.enabled) ? 'on' : 'waiting for 7pm')
+  ].join(' · ');
+}).catch(() => {});
 document.getElementById('feedSave').onclick = async () => {
   await Sweep.api('/api/admin/settings',{method:'POST',body:JSON.stringify({
     feed_enabled: document.getElementById('feedEnabled').checked ? '1':'0',

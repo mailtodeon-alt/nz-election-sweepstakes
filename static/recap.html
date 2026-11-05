@@ -9,6 +9,7 @@
 <body>
 <div class="wrap" style="max-width:1100px">
   <p><a id="homeLink" href="/">← Board</a> · <a id="pngLink" href="/recap.png">Download PNG</a></p>
+  <div id="houseMount"></div>
   <article class="recap-card" id="card">
     <p class="muted" id="kicker">Loading…</p>
     <h1 id="leader">—</h1>
@@ -21,6 +22,7 @@
   </article>
 </div>
 <script src="/static/js/common.js"></script>
+<script src="/static/js/house.js"></script>
 <script>
 const publicRecap = location.pathname.includes('/open/recap') || location.pathname.endsWith('/open/recap');
 const pool = publicRecap ? 'public' : 'pot';
@@ -31,6 +33,7 @@ if (Sweep.isDemo) {
   document.getElementById('homeLink').href = '/open/live';
   document.getElementById('pngLink').href = '/open/recap.png';
 }
+Sweep.api('/api/state').then((s) => House.mount(document.getElementById('houseMount'), s.house, { compact: true })).catch(() => {});
 Sweep.api('/api/recap?pool=' + pool).then(card => {
   document.getElementById('kicker').textContent = card.title || 'Recap';
   document.getElementById('leader').textContent = card.leader || '—';

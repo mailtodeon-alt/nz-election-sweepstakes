@@ -44,7 +44,7 @@ body { overflow: hidden; }
         <span class="pill" id="modePill">LIVE PROVISIONAL</span>
         <span class="pill demo hidden" id="demoPill">DEMO — NOT REAL RESULTS</span>
       </div>
-      <nav class="week-tabs" id="weekTabs">
+      <nav class="week-tabs" id="weekTabs" role="tablist" aria-label="Board views">
         <button type="button" data-view="board" class="active">Board</button>
         <button type="button" data-view="latest">Latest count</button>
         <button type="button" data-view="estimate">Estimate</button>
@@ -63,6 +63,9 @@ body { overflow: hidden; }
       <button class="btn secondary sound-toggle" id="soundBtn" title="Toggle leader sound" type="button">🔊 Sound off</button>
     </div>
   </div>
+  <div id="houseHero" class="house-hero"></div>
+  <div id="beforeCount"></div>
+  <div id="newsStrip" class="news-strip"></div>
   <div class="board">
     <div>
       <div class="leader-list" id="leaders"></div>
@@ -112,6 +115,7 @@ body { overflow: hidden; }
   <div id="ticker" class="ticker hidden"></div>
 </div>
 <script src="/static/js/common.js"></script>
+<script src="/static/js/house.js"></script>
 <script src="/static/js/night.js"></script>
 <script>
 let prevRanks = {};
@@ -222,7 +226,14 @@ function startWeekendRotate() {
   }, 18000);
 }
 document.querySelectorAll('#weekTabs button').forEach(btn => {
-  btn.onclick = () => showWeekendView(btn.dataset.view);
+  btn.onclick = () => {
+    showWeekendView(btn.dataset.view);
+    const view = btn.dataset.view === 'ranks' ? 'history' : btn.dataset.view;
+    const url = new URL(location.href);
+    if (!view || view === 'board') url.searchParams.delete('view');
+    else url.searchParams.set('view', view);
+    history.replaceState(null, '', url);
+  };
 });
 function render() {
   if (!state) return;
@@ -312,6 +323,11 @@ function render() {
     prevRanks[row.player_id] = place;
   });
   doFlip();
+  if (window.House && state.house) {
+    House.mount(document.getElementById('houseHero'), state.house);
+    House.mountBefore(document.getElementById('beforeCount'), state.advance, state.house.has_results);
+    House.mountNews(document.getElementById('newsStrip'), state.headlines);
+  }
 
   const bars = document.getElementById('partyBars');
   bars.innerHTML = PARTIES.map(p => {

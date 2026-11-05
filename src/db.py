@@ -68,6 +68,37 @@ DEFAULT_SETTINGS = {
     "event_title": "NZ Election Night Sweepstakes 2026",
     "most_seats_tie_rule": "If parties tie on seats, higher party vote % wins. Leaderboard ties: closest National exact party-vote % guess wins; still tied = prizes split.",
     "seats_note": "Vote bands use one-decimal %; boundary values fall in the higher band. Exact band 10 pts, adjacent 4 (parties-in-Parliament adjacent = 5).",
+    # Advance voting. The fetcher overwrites the 2026 total and as-of date when
+    # elections.nz publishes a newer figure. These seeds are the fallback.
+    "advance_votes_2026": "1074416",
+    "advance_as_of": "2026-11-02",
+    "advance_votes_2023_same": "860668",
+    "advance_votes_2020_same": "1282028",
+    "advance_votes_2023_total": "1368830",
+    "advance_fetch_ok_at": "",
+    "advance_fetch_error": "",
+    # Sitting House after the Port Waikato by-election. Majority is derived.
+    "parliament_2023_json": json.dumps({
+        "seats": {
+            "National": 49,
+            "Labour": 34,
+            "Green": 15,
+            "ACT": 11,
+            "NZ First": 8,
+            "Te Pāti Māori": 6,
+        },
+        "source": "https://elections.nz/media-and-news/2023/official-results-for-the-2023-general-election",
+        "note": "Official results on 3 November 2023 were a 122-seat House (National 48, Labour 34, Green 15, ACT 11, NZ First 8, Te Pāti Māori 6; two-seat Te Pāti Māori overhang). The 25 November 2023 Port Waikato by-election added one National electorate seat: National 49, House 123, majority 62.",
+    }),
+    "latest_poll_json": "",
+    "news_json": "[]",
+    "news_fetch_ok_at": "",
+    "news_fetch_error": "",
+    "news_sources_json": "[]",
+    "electorates_json": "[]",
+    "candidate_seats_json": "{}",
+    "vote_counts_json": "{}",
+    "feed_manual_off": "0",
 }
 
 

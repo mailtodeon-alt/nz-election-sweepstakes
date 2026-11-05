@@ -18,6 +18,7 @@ night. The full shift is applied when the remaining special share equals
 """
 from __future__ import annotations
 
+import json
 from typing import Optional
 
 SPECIAL_VOTES_2023 = 603_257
@@ -163,3 +164,143 @@ def project_seats(current_pct: dict[str, float], assumptions: dict) -> dict:
     electorates = {party: int(assumptions.get("electorates", {}).get(party) or 0) for party in shares}
     allocated = sainte_lague(votes, electorates, seats=120)
     return {"shares": shares, "electorates": electorates, **allocated}
+
+
+# Sitting Parliament after the 25 November 2023 Port Waikato by-election.
+# Official 3 Nov 2023 result (elections.nz): National 48, Labour 34, Green 15,
+# ACT 11, NZ First 8, Te Pāti Māori 6, House 122, TPM overhang of 2.
+# Port Waikato added one National seat (House 123, majority 62).
+PARLIAMENT_2023 = {
+    "National": 49,
+    "Labour": 34,
+    "Green": 15,
+    "ACT": 11,
+    "NZ First": 8,
+    "Te Pāti Māori": 6,
+}
+PARLIAMENT_2023_SOURCE = "https://elections.nz/media-and-news/2023/official-results-for-the-2023-general-election"
+PARLIAMENT_2023_NOTE = (
+    "Official results on 3 November 2023 were a 122-seat House "
+    "(National 48, Labour 34, Green 15, ACT 11, NZ First 8, Te Pāti Māori 6, "
+    "two-seat Te Pāti Māori overhang). The 25 November 2023 Port Waikato by-election "
+    "added one National electorate seat, so the sitting House is 123 and a majority is 62."
+)
+HOUSE_ORDER = ["Green", "Labour", "Te Pāti Māori", "TOP", "NZ First", "National", "ACT"]
+LEFT_BLOC = ("Labour", "Green", "Te Pāti Māori")
+RIGHT_BLOC = ("National", "ACT", "NZ First")
+
+
+def majority_line(house: int) -> int:
+    return int(house) // 2 + 1
+
+
+def _bloc(seats: dict, names: tuple, majority: int) -> dict:
+    total = sum(int(seats.get(name) or 0) for name in names)
+    short = max(0, majority - total)
+    return {"names": list(names), "seats": total, "short": short, "majority": short == 0}
+
+
+def pack_house(seats: dict, label: str, source: str = "", note: str = "") -> dict:
+    clean = {}
+    for name, value in (seats or {}).items():
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            continue
+        if count > 0:
+            clean[str(name)] = count
+    house = sum(clean.values())
+    majority = majority_line(house) if house else 61
+    return {
+        "label": label,
+        "seats": clean,
+        "house": house or 120,
+        "majority": majority if house else 61,
+        "left": _bloc(clean, LEFT_BLOC, majority if house else 61),
+        "right": _bloc(clean, RIGHT_BLOC, majority if house else 61),
+        "source": source,
+        "note": note,
+        "order": list(HOUSE_ORDER),
+    }
+
+
+def current_parliament(raw: str | None) -> dict:
+    seats = dict(PARLIAMENT_2023)
+    source = PARLIAMENT_2023_SOURCE
+    note = PARLIAMENT_2023_NOTE
+    if raw:
+        try:
+            parsed = json.loads(raw)
+        except (TypeError, ValueError):
+            parsed = None
+        if isinstance(parsed, dict):
+            blob = parsed.get("seats") if isinstance(parsed.get("seats"), dict) else parsed
+            picked = {}
+            for name, value in blob.items():
+                if name in ("source", "note", "seats"):
+                    continue
+                try:
+                    picked[name] = int(value)
+                except (TypeError, ValueError):
+                    continue
+            if picked:
+                seats = picked
+            source = parsed.get("source") or source
+            note = parsed.get("note") or note
+    return pack_house(seats, "Current Parliament (2023 election)", source, note)
+
+
+def project_live(votes: dict, candidate_seats: dict | None) -> dict | None:
+    """Sainte-Laguë on the provisional party vote. Electorate wins drive overhang."""
+    clean = {}
+    for name, value in (votes or {}).items():
+        try:
+            number = float(value)
+        except (TypeError, ValueError):
+            continue
+        if number > 0:
+            clean[name] = number
+    if not clean:
+        return None
+    electorates = {}
+    for name, value in (candidate_seats or {}).items():
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            continue
+        if count > 0:
+            electorates[name] = count
+    allocated = sainte_lague(clean, electorates, seats=120)
+    packed = pack_house(allocated["seats"], "Projected 2026 seats (provisional count)")
+    packed["overhang"] = allocated["overhang"]
+    packed["entitlement"] = allocated["entitlement"]
+    return packed
+
+
+def poll_projection(raw: str | None) -> dict | None:
+    if not raw or not str(raw).strip():
+        return None
+    try:
+        parsed = json.loads(raw)
+    except (TypeError, ValueError):
+        return None
+    parties = parsed.get("parties") if isinstance(parsed, dict) else None
+    if not isinstance(parties, dict):
+        return None
+    votes = {}
+    for name, value in parties.items():
+        if value in (None, ""):
+            continue
+        try:
+            votes[name] = float(value)
+        except (TypeError, ValueError):
+            continue
+    if not votes:
+        return None
+    packed = project_live(votes, {})
+    if not packed:
+        return None
+    packed["label"] = "Projected from latest poll"
+    packed["pollster"] = str(parsed.get("pollster") or "")
+    packed["as_of"] = str(parsed.get("date") or "")
+    return packed
