@@ -328,10 +328,12 @@ window.Sweep = (function () {
 
   if (document.querySelector('.tv')) {
     let idle;
+    const wide = window.matchMedia('(min-width: 900px)');
     const poke = () => {
       document.body.classList.remove('nav-idle');
       clearTimeout(idle);
-      idle = setTimeout(() => document.body.classList.add('nav-idle'), 4000);
+      if (!wide.matches) return;
+      idle = setTimeout(() => { if (wide.matches) document.body.classList.add('nav-idle'); }, 4000);
     };
     ['mousemove', 'pointerdown', 'keydown'].forEach((name) => document.addEventListener(name, poke));
     poke();

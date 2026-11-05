@@ -53,30 +53,34 @@ if (Sweep.isDemo) {
   document.getElementById('newsCard').href = '/demo/news';
   document.getElementById('coalCard').href = '/demo/coalition';
 }
-function paintHome(s) {
-  document.getElementById('title').textContent = s.settings.event_title || 'Sweepstakes';
-  document.getElementById('lockAt').textContent = s.settings.lock_at || '';
+let homeState = null;
+function writeStatus() {
   const status = document.getElementById('statusLine');
-  status.replaceChildren();
-  status.append(
-    document.createTextNode(s.locked ? 'Entries are locked. ' : 'Entries are open until '),
-  );
-  const strong = document.createElement('strong');
-  strong.id = 'lockAt';
-  strong.textContent = s.locked ? 'Locked' : (s.settings.lock_at || '');
-  status.append(strong);
+  if (!status || !homeState) return;
+  const left = Sweep.fmtCountdown(homeState.settings.lock_at);
+  const locked = homeState.locked || left === 'LOCKED';
+  status.textContent = locked ? 'Entries are locked' : ('Entries open · ' + left + ' until 7pm lock');
+}
+function paintHome(s) {
+  homeState = s;
+  document.getElementById('title').textContent = s.settings.event_title || 'Sweepstakes';
+  writeStatus();
   if (s.demo) {
     const p = document.getElementById('demoPill');
     p.style.display = 'inline-block'; p.classList.add('demo');
   }
   const me = (() => { try { return JSON.parse(localStorage.getItem(Sweep.isDemo ? 'sweep_me_demo' : 'sweep_me') || 'null'); } catch (e) { return null; } })();
   if (me && me.path && me.pool !== 'public') document.getElementById('potCard').href = me.path;
+  if (me && me.pool === 'public') {
+    document.getElementById('liveCard').href = Sweep.isDemo ? '/demo/open/live' : '/open/live';
+  }
   House.mount(document.getElementById('homeHouse'), s.house);
   House.mountBefore(document.getElementById('homeBefore'), s.advance, s.house && s.house.has_results);
   House.mountNews(document.getElementById('homeNews'), s.headlines);
 }
 function loadHome() { Sweep.api('/api/state').then(paintHome).catch(() => {}); }
 loadHome();
+setInterval(writeStatus, 1000);
 Sweep.subscribe((msg) => { if (msg.event !== 'heartbeat') loadHome(); });
 </script>
 

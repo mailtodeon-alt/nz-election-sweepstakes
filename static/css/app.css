@@ -346,7 +346,7 @@ body:has(.tv) .site-header:hover, body:has(.tv) .site-header:focus-within, body.
 body:has(.tv).nav-idle .site-header { opacity: 0; }
 body:has(.tv).nav-idle .site-header:focus-within, body.nav-open:has(.tv) .site-header { opacity: 1; }
 .week-tabs { background: rgba(8,14,28,.55); border: 1px solid #2a4068; border-radius: 999px; padding: 4px; }
-.week-tabs button, .week-tabs a.btn { border-radius: 999px; min-height: 40px; }
+.week-tabs button, .week-tabs a.btn { border-radius: 999px; min-height: 44px; }
 .launcher { display: grid; gap: 12px; }
 .launch-card {
   display: block; padding: 18px 16px; border-radius: 16px; background: var(--panel);
