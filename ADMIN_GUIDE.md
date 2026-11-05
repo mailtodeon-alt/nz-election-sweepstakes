@@ -69,6 +69,18 @@ Reset the demo database and open `/demo/live` before guests arrive. Stage 1–4 
 5. **Group vs public.** Both boards show the average main-ballot score of people who have submitted. Someone with an empty ballot is left out. Side-bet points are not in this average.
 6. **Auto-refresh.** Leave **Enable auto poll** off until you have tried **Dry run / preview** and the parsed party votes and seats look right. Preview does not save. When you enable it, set the interval to **180** seconds (3 minutes) if the box still shows 90 from the original install. Anything you typed as manual stays, including when the feed is empty or not valid XML.
 
+## Weekend (Sunday through the official result)
+
+After **Freeze election-night snapshot**, the main TV board keeps that pot result. Further result edits and the feed show up under **Latest count**, which is labelled as not the pot result. It lists how many of each player's 10 calls are right, adjacent, or wrong, and the counted-% history.
+
+**Weekend mode** rotates the TV through Board, Latest count, Estimate, and Ranks. Leave it off during the night if you want the board to stay still.
+
+- **Estimate** is a special-vote sketch. Defaults are the 2023 shift from the ordinary count to the official result (603,257 special votes were outside that preliminary count; official shares are the archived 2023 `election.xml`). You can change the special-vote % and the per-party shifts. Seats use Sainte-Laguë for 120 seats. A party under 5% is included if you enter an electorate win. Overhang is noted, not hidden. Nothing here is written into results, prizes, or the pot CSV.
+- **Ranks** is place from the first saved count to now, with a biggest-mover line.
+- **Pin pot recap** / **Pin public recap** saves today's card. Open `/recap` or `/open/recap`, and download the PNG from the same page.
+- **Coalition** notes are whatever you type. The link must be `http` or `https`. The page updates live. It does not read the news by itself.
+- **Closest number** side bets (final turnout, and similar) use the same side-bet form with kind "Closest number wins" and an optional open-until time. The closest answer gets the points. Those points are on the public board and the bonus table. Pot players can enter a number; it does not move their pot place.
+
 ## Demo mode
 
 1. From admin: **Reset demo DB**, then **Demo stage 1…4** to simulate counting.

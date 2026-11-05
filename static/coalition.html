@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Coalition watch</title>
+<meta name="theme-color" content="#070b14"/>
+<link rel="stylesheet" href="/static/css/app.css"/>
+</head>
+<body>
+<div class="wrap">
+  <p><a id="homeLink" href="/live">← Board</a></p>
+  <h1>Coalition watch</h1>
+  <p class="muted">Notes the host types in. Nothing here is scraped from the news.</p>
+  <div id="events"></div>
+</div>
+<script src="/static/js/common.js"></script>
+<script>
+if (Sweep.isDemo) document.getElementById('homeLink').href = '/demo/live';
+function draw(events) {
+  const box = document.getElementById('events');
+  box.innerHTML = '';
+  (events || []).forEach(ev => {
+    const card = document.createElement('article');
+    card.className = 'card';
+    const when = document.createElement('div');
+    when.className = 'muted';
+    when.textContent = ev.at || '';
+    const title = document.createElement('h3');
+    title.textContent = ev.headline || '';
+    card.append(when, title);
+    if (ev.parties) {
+      const tags = document.createElement('p');
+      tags.textContent = ev.parties;
+      card.appendChild(tags);
+    }
+    if (ev.source_url) {
+      const link = document.createElement('a');
+      link.href = ev.source_url;
+      link.textContent = ev.source_url;
+      link.rel = 'noopener';
+      card.appendChild(link);
+    }
+    box.appendChild(card);
+  });
+  if (!(events || []).length) box.textContent = 'No notes yet.';
+}
+function load() { Sweep.api('/api/coalition').then(data => draw(data.events)); }
+load();
+Sweep.subscribe(msg => { if (msg.event !== 'heartbeat' && msg.event !== 'reactions') load(); });
+</script>
+</body></html>

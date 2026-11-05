@@ -108,6 +108,8 @@ def list_side_bets(conn: D.Conn, active_only: bool = True) -> list[dict]:
     for r in conn.execute(sql):
         d = dict(r)
         d["choices"] = json.loads(d.pop("choices_json") or "[]")
+        d["kind"] = d.get("kind") or "choice"
+        d["open_until"] = d.get("open_until") or ""
         rows.append(d)
     return rows
 
@@ -119,8 +121,28 @@ def side_bet_picks(conn: D.Conn) -> dict[int, dict[int, str]]:
     return out
 
 
+def _bet_is_open(bet: dict) -> bool:
+    if bet.get("status") != "open":
+        return False
+    until = (bet.get("open_until") or "").strip()
+    if not until:
+        return True
+    try:
+        deadline = datetime.fromisoformat(until)
+        if deadline.tzinfo is None:
+            deadline = deadline.replace(tzinfo=D.NZ)
+    except Exception:
+        return True
+    return D.now_nz() < deadline
+
+
 def side_bonus_map(conn: D.Conn) -> dict[int, dict[str, int]]:
-    """Points already earned, plus points still available on unanswered bets."""
+    """Points already earned, plus points still available on unanswered bets.
+
+    Choice bets pay an exact match. Closest-number bets pay everyone tied for
+    the smallest error. These points are for the public board and the bonus
+    table only; callers must not add them to pot totals.
+    """
     bets = list_side_bets(conn)
     picks = side_bet_picks(conn)
     earned: dict[int, int] = {}
@@ -129,9 +151,28 @@ def side_bonus_map(conn: D.Conn) -> dict[int, dict[str, int]]:
         pts = int(bet["points"] or 0)
         answer = (bet.get("answer") or "").strip()
         chosen = picks.get(int(bet["id"]), {})
+        kind = bet.get("kind") or "choice"
         if not answer:
-            if bet.get("status") == "open":
+            if _bet_is_open(bet):
                 pending_each += pts
+            continue
+        if kind == "closest":
+            errors = []
+            try:
+                target = float(answer)
+            except ValueError:
+                continue
+            for pid, value in chosen.items():
+                try:
+                    errors.append((abs(float(value) - target), pid))
+                except (TypeError, ValueError):
+                    continue
+            if not errors:
+                continue
+            best = min(err for err, _pid in errors)
+            for err, pid in errors:
+                if err == best:
+                    earned[pid] = earned.get(pid, 0) + pts
             continue
         for pid, value in chosen.items():
             if str(value).strip() == answer:
@@ -182,9 +223,17 @@ def record_score_history(conn: D.Conn, rows: list[dict], pool: str) -> None:
     at = D.iso_now()
     for row in rows:
         conn.execute(
-            """INSERT INTO score_history(at, reporting_pct, pool, player_id, name, total)
-               VALUES (?,?,?,?,?,?)""",
-            (at, reporting, pool, row["player_id"], row["name"], int(row.get("total") or 0)),
+            """INSERT INTO score_history(at, reporting_pct, pool, player_id, name, total, place)
+               VALUES (?,?,?,?,?,?,?)""",
+            (
+                at,
+                reporting,
+                pool,
+                row["player_id"],
+                row["name"],
+                int(row.get("question_total", row.get("total")) or 0) if pool == D.POOL_POT else int(row.get("total") or 0),
+                row.get("place") or row.get("rank"),
+            ),
         )
 
 
@@ -201,6 +250,7 @@ def history_series(conn: D.Conn, pool: str) -> list[dict]:
             "at": r["at"],
             "reporting_pct": r["reporting_pct"] or "",
             "total": int(r["total"] or 0),
+            "place": r["place"],
         })
     return list(series.values())
 
@@ -313,3 +363,20 @@ def seed_demo_night(conn: D.Conn) -> None:
                VALUES (?,?,?,?,?,0,?)""",
             (pid, html.escape(name, quote=True), pool, body, now, featured),
         )
+    D.set_setting(conn, "weekend_mode", "1")
+    conn.execute(
+        """INSERT INTO side_bets(prompt, choices_json, points, status, answer, created_at, active, kind, open_until)
+           VALUES (?,?,?,?,?,?,1,'closest',?)""",
+        ("Final turnout %", "[]", 10, "open", None, now, "2026-11-27T12:00:00+13:00"),
+    )
+    conn.execute(
+        """INSERT INTO coalition_events(at, headline, source_url, parties, created_at, active)
+           VALUES (?,?,?,?,?,1)""",
+        (
+            now,
+            html.escape("Talks open between the largest party and two possibles.", quote=True),
+            "https://www.electionresults.govt.nz/",
+            "National, ACT, NZ First",
+            now,
+        ),
+    )

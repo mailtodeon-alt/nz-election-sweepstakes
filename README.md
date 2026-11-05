@@ -58,6 +58,22 @@ Preview everything on the demo TV first: Admin → **Reset demo DB**, then **Dem
 | Group vs public | Panel on both boards. | Average of the main ballot for people who submitted. Side bets are not in this average. |
 | Results feed | Admin → Results feed. Leave it **off** until the XML is live. | **Dry run / preview** fetches votes and seats and does not save them. Manual numbers always win. A bad or empty fetch does not clear what you typed. New databases default to a 3 minute interval; an existing database keeps its saved interval (often 90) until you change it. |
 
+## After election night
+
+Turn on **Weekend mode** in admin when the TV should rotate Board, Latest count, Estimate, and Ranks. The main board stays the frozen pot result once you have taken the 11:30pm snapshot. Later edits and the feed update **Latest count** only.
+
+| Page | What it is |
+|------|------------|
+| `/live` tabs, or `/live?view=latest` | Latest count: right / adjacent / wrong on the 10 calls, plus counted % over time. Labelled as not the pot result. |
+| `/live` Estimate tab | Special-vote seat sketch. Defaults use the 2023 preliminary-to-official shift (603,257 special votes). Sainte-Laguë, 120 seats, overhang noted. |
+| `/live` Ranks tab, `/live?view=history` | Place from Saturday night to now, and the biggest mover. |
+| `/recap`, `/recap.png` | Pot recap card (1080×1350) and PNG. |
+| `/open/recap`, `/open/recap.png` | Same card for the public board. |
+| `/coalition` | Host-written coalition notes. |
+| `/demo/live`, `/demo/recap`, `/demo/coalition` | Preview. Demo weekend mode is on after a demo reset. |
+
+Bonus rounds are extra side bets (closest number, with an open-until time). Points land on the public board and the bonus table only.
+
 ## Health
 
 `GET /healthz` → `{ok: true, backend: "postgres"|"sqlite"}`.

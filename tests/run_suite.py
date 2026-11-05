@@ -35,6 +35,9 @@ def sqlite_pass() -> None:
     night = base_env()
     night["DB_PATH"] = str(Path(tempfile.mkdtemp(prefix="sweep-night-")) / "sweep.db")
     run("test_night.py", night)
+    weekend = base_env()
+    weekend["DB_PATH"] = str(Path(tempfile.mkdtemp(prefix="sweep-weekend-")) / "sweep.db")
+    run("test_weekend.py", weekend)
 
 
 def postgres_pass() -> None:
@@ -50,6 +53,7 @@ def postgres_pass() -> None:
         admin.execute("CREATE DATABASE sweep_mig")
         admin.execute("CREATE DATABASE sweep_feat")
         admin.execute("CREATE DATABASE sweep_night")
+        admin.execute("CREATE DATABASE sweep_weekend")
     finally:
         admin.close()
     try:
@@ -65,6 +69,10 @@ def postgres_pass() -> None:
         night["DATABASE_URL"] = server.get_uri("sweep_night")
         night.pop("DB_PATH", None)
         run("test_night.py", night)
+        weekend = base_env()
+        weekend["DATABASE_URL"] = server.get_uri("sweep_weekend")
+        weekend.pop("DB_PATH", None)
+        run("test_weekend.py", weekend)
     finally:
         server.cleanup()
 

@@ -26,6 +26,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 import db as D
 import night as N
+import weekend as W
 from scoring import score_player, rank_players, derive_from_party_table, actual_band_label, BANDS
 from feed import FeedPoller
 
@@ -212,6 +213,7 @@ def record_results_history(conn) -> None:
     pub = enrich_leaderboard(N.public_rows_with_side_bets(pub, conn, nat), questions)
     N.record_score_history(conn, pot, D.POOL_POT)
     N.record_score_history(conn, pub, D.POOL_PUBLIC)
+    W.record_count_tick(conn)
 
 
 feed_poller.on_applied = record_results_history
@@ -353,6 +355,9 @@ def demo_pages(rest):
         "admin": "admin.html",
         "open": "open.html",
         "open/live": "open-live.html",
+        "recap": "recap.html",
+        "open/recap": "recap.html",
+        "coalition": "coalition.html",
     }
     if rest in mapping:
         return send_from_directory(ROOT / "static", mapping[rest])
@@ -523,6 +528,8 @@ def assemble_state(conn, demo: bool, pool: str) -> dict:
             "points": bet["points"],
             "status": bet["status"],
             "answer": bet.get("answer") or "",
+            "kind": bet.get("kind") or "choice",
+            "open_until": bet.get("open_until") or "",
         })
     _f = conn.execute("SELECT * FROM feed_status WHERE id=1").fetchone()
     feed = dict(_f) if _f else {}
@@ -539,6 +546,7 @@ def assemble_state(conn, demo: bool, pool: str) -> dict:
         "feed_poll_seconds": settings.get("feed_poll_seconds") or "180",
         "reactions_enabled": settings.get("reactions_enabled") or "1",
         "ticker_enabled": settings.get("ticker_enabled") or "1",
+        "weekend_mode": settings.get("weekend_mode") or "0",
     }
     if pool == D.POOL_POT:
         settings_out["prize_first"] = settings.get("prize_first")
@@ -546,6 +554,23 @@ def assemble_state(conn, demo: bool, pool: str) -> dict:
         settings_out["entry_fee"] = settings.get("entry_fee")
     else:
         settings_out["public_signups_open"] = settings.get("public_signups_open") or "1"
+    live_ranked = ranked
+    mode = settings.get("board_mode") or "live"
+    if pool == D.POOL_POT and locked and mode in ("frozen", "official"):
+        kind = "official" if mode == "official" else "election_night"
+        snap_row = conn.execute(
+            "SELECT payload_json FROM snapshots WHERE kind=? ORDER BY id DESC LIMIT 1",
+            (kind,),
+        ).fetchone()
+        if snap_row:
+            try:
+                snapped = json.loads(snap_row["payload_json"]).get("leaderboard") or []
+            except Exception:
+                snapped = []
+            if snapped:
+                ranked = snapped
+                compare["pot"] = N.submitted_average(ranked)
+    series = N.history_series(conn, pool)
     return {
         "demo": demo,
         "pool": pool,
@@ -582,6 +607,16 @@ def assemble_state(conn, demo: bool, pool: str) -> dict:
         "side_bet_scores": N.side_score_table(conn),
         "ticker": N.ticker_rows(conn, pool=pool, include_featured_public=(pool == D.POOL_POT)),
         "reactions": reactions.totals(demo),
+        "latest_count": {
+            "label": "Latest count (not the pot result)",
+            "at": D.iso_now(),
+            "reporting_pct": settings.get("reporting_pct") or "",
+            "players": W.latest_rows(live_ranked, questions),
+            "ticks": W.recent_ticks(conn),
+        },
+        "projection": W.projection_view(conn, live_ranked, questions),
+        "biggest_mover": W.biggest_mover(series),
+        "pot_result_frozen": pool == D.POOL_POT and mode in ("frozen", "official") and ranked is not live_ranked,
     }
 
 
@@ -779,6 +814,8 @@ def _player_side_bets(conn, player_id: int) -> list[dict]:
             "points": bet["points"],
             "status": bet["status"],
             "answer": bet.get("answer") or "",
+            "kind": bet.get("kind") or "choice",
+            "open_until": bet.get("open_until") or "",
             "pick": chosen.get(int(bet["id"]), {}).get(int(player_id), ""),
         })
     return out
@@ -834,11 +871,18 @@ def api_player_side_bet(token):
             bet = conn.execute("SELECT * FROM side_bets WHERE id=? AND active=1", (bet_id,)).fetchone()
             if not bet:
                 return jsonify({"error": "bad_bet", "message": "Unknown side bet."}), 404
-            if bet["status"] != "open":
+            row = dict(bet)
+            if not N._bet_is_open(row):
                 return jsonify({"error": "side_bet_closed", "message": "That side bet is closed."}), 403
-            choices = json.loads(bet["choices_json"] or "[]")
+            choices = json.loads(row["choices_json"] or "[]")
             value = str(data.get("value") or "").strip()
-            if value not in choices:
+            kind = row.get("kind") or "choice"
+            if kind == "closest":
+                try:
+                    float(value)
+                except ValueError:
+                    return jsonify({"error": "bad_choice", "message": "Enter a number."}), 400
+            elif value not in choices:
                 return jsonify({"error": "bad_choice", "message": "Pick one of the options."}), 400
             conn.execute(
                 """INSERT INTO side_bet_picks(side_bet_id, player_id, value, updated_at)
@@ -895,10 +939,13 @@ def admin_side_bet_create():
     if isinstance(choices, str):
         choices = [c.strip() for c in choices.split("\n") if c.strip()]
     choices = [str(c).strip() for c in choices if str(c).strip()]
-    if len(choices) < 2 or len(choices) > 8:
-        return jsonify({"error": "bad_choices", "message": "Give 2 to 8 options."}), 400
-    if len(set(choices)) != len(choices):
-        return jsonify({"error": "bad_choices", "message": "Options must be different."}), 400
+    kind = "closest" if str(data.get("kind") or "choice") == "closest" else "choice"
+    if kind == "choice":
+        if len(choices) < 2 or len(choices) > 8:
+            return jsonify({"error": "bad_choices", "message": "Give 2 to 8 options."}), 400
+        if len(set(choices)) != len(choices):
+            return jsonify({"error": "bad_choices", "message": "Options must be different."}), 400
+    open_until = str(data.get("open_until") or "").strip() or None
     try:
         points = int(data.get("points") or 5)
     except (TypeError, ValueError):
@@ -908,9 +955,9 @@ def admin_side_bet_create():
     conn = D.connect(demo)
     try:
         conn.execute(
-            """INSERT INTO side_bets(prompt, choices_json, points, status, created_at, active)
-               VALUES (?,?,?, 'open', ?, 1)""",
-            (html.escape(prompt, quote=True), json.dumps(choices), points, D.iso_now()),
+            """INSERT INTO side_bets(prompt, choices_json, points, status, created_at, active, kind, open_until)
+               VALUES (?,?,?, 'open', ?, 1, ?, ?)""",
+            (html.escape(prompt, quote=True), json.dumps(choices), points, D.iso_now(), kind, open_until),
         )
         D.audit(conn, "admin", "side_bet_create", {"prompt": prompt})
         conn.commit()
@@ -941,9 +988,16 @@ def admin_side_bet_update(bet_id):
             conn.execute("UPDATE side_bets SET active=0 WHERE id=?", (bet_id,))
         elif action == "answer":
             answer = str(data.get("answer") or "").strip()
-            choices = json.loads(bet["choices_json"] or "[]")
-            if answer not in choices:
-                return jsonify({"error": "bad_choice", "message": "Answer must be one of the options."}), 400
+            kind = dict(bet).get("kind") or "choice"
+            if kind == "closest":
+                try:
+                    float(answer)
+                except ValueError:
+                    return jsonify({"error": "bad_choice", "message": "Enter the numeric result."}), 400
+            else:
+                choices = json.loads(bet["choices_json"] or "[]")
+                if answer not in choices:
+                    return jsonify({"error": "bad_choice", "message": "Answer must be one of the options."}), 400
             conn.execute("UPDATE side_bets SET answer=?, status='closed' WHERE id=?", (answer, bet_id))
             record_results_history(conn)
         else:
@@ -1197,8 +1251,10 @@ def admin_settings():
             "feed_enabled", "feed_url", "feed_poll_seconds", "demo_mode",
             "prize_first", "prize_second", "entry_fee",
             "public_signups_open", "public_player_cap",
-            "reactions_enabled", "ticker_enabled",
+            "reactions_enabled", "ticker_enabled", "weekend_mode",
         }
+        if "weekend_mode" in data:
+            data["weekend_mode"] = "1" if str(data["weekend_mode"]).strip().lower() in ("1", "true", "yes", "on") else "0"
         for flag in ("reactions_enabled", "ticker_enabled"):
             if flag in data:
                 data[flag] = "1" if str(data[flag]).strip().lower() in ("1", "true", "yes", "on") else "0"
@@ -1598,6 +1654,168 @@ def admin_party_table():
     finally:
         conn.close()
 
+
+
+def _pinned_recap(conn, pool: str):
+    row = conn.execute(
+        "SELECT * FROM recap_cards WHERE pool=? AND pinned=1 ORDER BY id DESC LIMIT 1",
+        (pool,),
+    ).fetchone()
+    if not row:
+        row = conn.execute(
+            "SELECT * FROM recap_cards WHERE pool=? ORDER BY id DESC LIMIT 1",
+            (pool,),
+        ).fetchone()
+    if not row:
+        return None
+    payload = json.loads(row["payload_json"])
+    payload["id"] = row["id"]
+    payload["day"] = row["day"]
+    return payload
+
+
+def _build_recap(conn, pool: str) -> dict:
+    ranked, questions, _players, _results = build_leaderboard(conn, pool=pool)
+    if pool == D.POOL_PUBLIC:
+        nat = national_actual_from_results(conn, questions, {k: v["value"] for k, v in D.get_results(conn).items()})
+        ranked = enrich_leaderboard(N.public_rows_with_side_bets(ranked, conn, nat), questions)
+    mover = W.biggest_mover(N.history_series(conn, pool))
+    return W.recap_from_state(pool, ranked, mover, D.iso_now())
+
+
+@app.get("/recap")
+def recap_page():
+    return send_from_directory(ROOT / "static", "recap.html")
+
+
+@app.get("/open/recap")
+def open_recap_page():
+    return send_from_directory(ROOT / "static", "recap.html")
+
+
+@app.get("/coalition")
+def coalition_page():
+    return send_from_directory(ROOT / "static", "coalition.html")
+
+
+@app.get("/api/recap")
+def api_recap():
+    demo = use_demo()
+    pool = D.POOL_PUBLIC if request.args.get("pool") == "public" else D.POOL_POT
+    conn = D.connect(demo)
+    try:
+        pinned = _pinned_recap(conn, pool)
+        payload = pinned or _build_recap(conn, pool)
+        payload["pinned"] = bool(pinned)
+        return jsonify(payload)
+    finally:
+        conn.close()
+
+
+@app.get("/recap.png")
+@app.get("/open/recap.png")
+def recap_png():
+    demo = use_demo()
+    pool = D.POOL_PUBLIC if request.path.startswith("/open") or request.args.get("pool") == "public" else D.POOL_POT
+    conn = D.connect(demo)
+    try:
+        pinned = _pinned_recap(conn, pool)
+        payload = pinned or _build_recap(conn, pool)
+    finally:
+        conn.close()
+    body = W.render_recap_png(payload)
+    return Response(body, mimetype="image/png", headers={"Content-Disposition": "attachment; filename=recap.png"})
+
+
+@app.post("/api/admin/recap")
+def admin_recap():
+    err = require_admin()
+    if err:
+        return err
+    demo = use_demo()
+    data = request.get_json(force=True, silent=True) or {}
+    pool = D.POOL_PUBLIC if data.get("pool") == "public" else D.POOL_POT
+    conn = D.connect(demo)
+    try:
+        payload = _build_recap(conn, pool)
+        day = D.now_nz().date().isoformat()
+        conn.execute("UPDATE recap_cards SET pinned=0 WHERE pool=?", (pool,))
+        conn.execute(
+            "INSERT INTO recap_cards(pool, day, created_at, pinned, payload_json) VALUES (?,?,?,?,?)",
+            (pool, day, D.iso_now(), 1, json.dumps(payload)),
+        )
+        conn.commit()
+        broadcast("recap")
+        return jsonify({"ok": True, "recap": payload})
+    finally:
+        conn.close()
+
+
+@app.get("/api/coalition")
+def api_coalition():
+    demo = use_demo()
+    conn = D.connect(demo)
+    try:
+        rows = []
+        for r in conn.execute("SELECT * FROM coalition_events WHERE active=1 ORDER BY id"):
+            rows.append({
+                "id": r["id"],
+                "at": r["at"],
+                "headline": r["headline"],
+                "source_url": r["source_url"] or "",
+                "parties": r["parties"] or "",
+            })
+        return jsonify({"events": rows})
+    finally:
+        conn.close()
+
+
+@app.post("/api/admin/coalition")
+def admin_coalition():
+    err = require_admin()
+    if err:
+        return err
+    demo = use_demo()
+    data = request.get_json(force=True, silent=True) or {}
+    headline = str(data.get("headline") or "").strip()
+    if not headline or len(headline) > 180:
+        return jsonify({"error": "bad_headline", "message": "Enter a headline up to 180 characters."}), 400
+    try:
+        source = W.clean_http_url(data.get("source_url"))
+    except ValueError as exc:
+        return jsonify({"error": "bad_url", "message": str(exc)}), 400
+    conn = D.connect(demo)
+    try:
+        conn.execute(
+            "INSERT INTO coalition_events(at, headline, source_url, parties, created_at, active) VALUES (?,?,?,?,?,1)",
+            (D.iso_now(), headline, source, str(data.get("parties") or "").strip()[:80], D.iso_now()),
+        )
+        conn.commit()
+        broadcast("coalition")
+        return jsonify({"ok": True})
+    finally:
+        conn.close()
+
+
+@app.post("/api/admin/projection")
+def admin_projection():
+    err = require_admin()
+    if err:
+        return err
+    demo = use_demo()
+    data = request.get_json(force=True, silent=True) or {}
+    conn = D.connect(demo)
+    try:
+        D.set_setting(conn, "projection_json", json.dumps({
+            "special_percent": data.get("special_percent"),
+            "shifts": data.get("shifts") or {},
+            "electorates": data.get("electorates") or {},
+        }))
+        conn.commit()
+        broadcast("projection")
+        return jsonify({"ok": True})
+    finally:
+        conn.close()
 
 
 def create_app():

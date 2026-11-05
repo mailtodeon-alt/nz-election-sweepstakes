@@ -214,6 +214,29 @@ function renderSideBets() {
     const row = document.createElement('div');
     row.className = 'emoji-row';
     row.style.marginTop = '6px';
+    if (b.kind === 'closest') {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.step = '0.1';
+      input.placeholder = 'Your number';
+      input.value = b.pick || '';
+      input.disabled = b.status !== 'open';
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.textContent = 'Save number';
+      save.disabled = b.status !== 'open';
+      save.onclick = async () => {
+        try {
+          await Sweep.api('/api/player/' + token + '/side-bets', { method: 'POST', body: JSON.stringify({ side_bet_id: b.id, value: input.value }) });
+          Sweep.toast('Saved');
+          await load();
+        } catch (e) { Sweep.toast(e.data?.message || e.message); }
+      };
+      row.append(input, save);
+      wrap.appendChild(row);
+      box.appendChild(wrap);
+      return;
+    }
     (b.choices || []).forEach(choice => {
       const btn = document.createElement('button');
       btn.type = 'button';

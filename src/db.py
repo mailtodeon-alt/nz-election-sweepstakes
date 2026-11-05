@@ -58,6 +58,7 @@ DEFAULT_SETTINGS = {
     "feed_poll_seconds": "180",
     "reactions_enabled": "1",
     "ticker_enabled": "1",
+    "weekend_mode": "0",
     "reporting_pct": "",
     "prize_first": "100",
     "prize_second": "20",
@@ -364,6 +365,90 @@ def _ensure_player_columns(conn: Conn) -> None:
     conn.execute("UPDATE players SET pool='pot' WHERE pool IS NULL OR pool=''")
 
 
+def _ensure_weekend(conn: Conn) -> None:
+    """Additive columns and tables for the weekend views. Safe to re-run."""
+    if conn.backend == "sqlite":
+        history_cols = [r[1] for r in conn.execute("PRAGMA table_info(score_history)").fetchall()]
+        if history_cols and "place" not in history_cols:
+            conn.execute("ALTER TABLE score_history ADD COLUMN place INTEGER")
+        bet_cols = [r[1] for r in conn.execute("PRAGMA table_info(side_bets)").fetchall()]
+        if bet_cols and "kind" not in bet_cols:
+            conn.execute("ALTER TABLE side_bets ADD COLUMN kind TEXT NOT NULL DEFAULT 'choice'")
+        if bet_cols and "open_until" not in bet_cols:
+            conn.execute("ALTER TABLE side_bets ADD COLUMN open_until TEXT")
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS count_ticks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                at TEXT NOT NULL,
+                reporting_pct TEXT,
+                votes_json TEXT NOT NULL DEFAULT '{}',
+                seats_json TEXT NOT NULL DEFAULT '{}'
+            );
+            CREATE TABLE IF NOT EXISTS coalition_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                at TEXT NOT NULL,
+                headline TEXT NOT NULL,
+                source_url TEXT,
+                parties TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL,
+                active INTEGER NOT NULL DEFAULT 1
+            );
+            CREATE TABLE IF NOT EXISTS recap_cards (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                pool TEXT NOT NULL,
+                day TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                pinned INTEGER NOT NULL DEFAULT 1,
+                payload_json TEXT NOT NULL
+            );
+            """
+        )
+        return
+    conn.execute(
+        """DO $$ BEGIN
+            ALTER TABLE score_history ADD COLUMN IF NOT EXISTS place INTEGER;
+        EXCEPTION WHEN others THEN NULL; END $$;"""
+    )
+    conn.execute(
+        """DO $$ BEGIN
+            ALTER TABLE side_bets ADD COLUMN IF NOT EXISTS kind TEXT NOT NULL DEFAULT 'choice';
+        EXCEPTION WHEN others THEN NULL; END $$;"""
+    )
+    conn.execute(
+        """DO $$ BEGIN
+            ALTER TABLE side_bets ADD COLUMN IF NOT EXISTS open_until TEXT;
+        EXCEPTION WHEN others THEN NULL; END $$;"""
+    )
+    for stmt in (
+        """CREATE TABLE IF NOT EXISTS count_ticks (
+            id SERIAL PRIMARY KEY,
+            at TEXT NOT NULL,
+            reporting_pct TEXT,
+            votes_json TEXT NOT NULL DEFAULT '{}',
+            seats_json TEXT NOT NULL DEFAULT '{}'
+        )""",
+        """CREATE TABLE IF NOT EXISTS coalition_events (
+            id SERIAL PRIMARY KEY,
+            at TEXT NOT NULL,
+            headline TEXT NOT NULL,
+            source_url TEXT,
+            parties TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 1
+        )""",
+        """CREATE TABLE IF NOT EXISTS recap_cards (
+            id SERIAL PRIMARY KEY,
+            pool TEXT NOT NULL,
+            day TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            pinned INTEGER NOT NULL DEFAULT 1,
+            payload_json TEXT NOT NULL
+        )""",
+    ):
+        conn.execute(stmt)
+
+
 def init_db(demo: bool = False, force_seed_players: bool = True) -> None:
     with _lock:
         conn = connect(demo)
@@ -389,6 +474,7 @@ def init_db(demo: bool = False, force_seed_players: bool = True) -> None:
                     if s:
                         conn.execute(s)
                 conn.commit()
+            _ensure_weekend(conn)
 
             for k, v in DEFAULT_SETTINGS.items():
                 if conn.backend == "sqlite":

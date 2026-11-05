@@ -159,8 +159,8 @@ window.Night = (function () {
     svg.innerHTML = body;
   }
 
-  async function loadChart(pool) {
-    const svg = document.getElementById('historyChart');
+  async function loadChart(pool, elementId) {
+    const svg = document.getElementById(elementId || 'historyChart');
     if (!svg) return;
     const data = await Sweep.api('/api/history?pool=' + encodeURIComponent(pool));
     drawChart(svg, data.series || []);

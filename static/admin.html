@@ -124,7 +124,21 @@
       <h3>Reactions and ticker</h3>
       <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="reactionsOn" style="width:auto"/> Reactions on</label>
       <label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="tickerOn" style="width:auto"/> Ticker on</label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="weekendOn" style="width:auto"/> Weekend mode (TV rotates Board / Latest / Estimate / Ranks)</label>
       <button id="saveNight" style="margin-top:8px" type="button">Save</button>
+      <div class="row" style="margin-top:10px">
+        <button type="button" class="secondary" id="pinPotRecap">Pin pot recap</button>
+        <button type="button" class="secondary" id="pinPublicRecap">Pin public recap</button>
+        <a class="btn secondary" href="/recap" target="_blank">Open recap</a>
+        <a class="btn secondary" href="/coalition" target="_blank">Coalition</a>
+      </div>
+      <label style="margin-top:12px">Coalition headline</label>
+      <input id="coalHeadline" maxlength="180"/>
+      <label>Source URL (http or https)</label>
+      <input id="coalUrl" placeholder="https://"/>
+      <label>Parties</label>
+      <input id="coalParties" placeholder="National, ACT"/>
+      <button type="button" id="coalAdd" class="secondary" style="margin-top:8px">Add note</button>
       <div id="tickerAdmin" style="margin-top:12px"></div>
     </div>
 
@@ -136,6 +150,10 @@
       <label style="margin-top:8px">Options, one per line</label>
       <textarea id="betChoices" rows="3">Yes
 No</textarea>
+      <label style="margin-top:8px">Kind</label>
+      <select id="betKind"><option value="choice">Yes/No or choices</option><option value="closest">Closest number wins</option></select>
+      <label>Open until (optional ISO time)</label>
+      <input id="betUntil" placeholder="2026-11-27T12:00:00+13:00"/>
       <label style="margin-top:8px">Points</label>
       <input id="betPoints" type="number" value="5" min="1" max="50"/>
       <button id="betCreate" type="button" style="margin-top:8px">Create side bet</button>
@@ -335,6 +353,7 @@ async function refresh() {
     `${a.at} · ${a.actor} · ${a.action}`).join('<br>');
   document.getElementById('reactionsOn').checked = (full.settings.reactions_enabled || '1') === '1';
   document.getElementById('tickerOn').checked = (full.settings.ticker_enabled || '1') === '1';
+  document.getElementById('weekendOn').checked = (full.settings.weekend_mode || '0') === '1';
   renderSideBets(full.side_bets || []);
   loadTickerAdmin();
 }
@@ -475,7 +494,8 @@ async function loadTickerAdmin() {
 document.getElementById('saveNight').onclick = async () => {
   await Sweep.api('/api/admin/settings', {method:'POST', body: JSON.stringify({
     reactions_enabled: document.getElementById('reactionsOn').checked ? '1' : '0',
-    ticker_enabled: document.getElementById('tickerOn').checked ? '1' : '0'
+    ticker_enabled: document.getElementById('tickerOn').checked ? '1' : '0',
+    weekend_mode: document.getElementById('weekendOn').checked ? '1' : '0'
   })});
   Sweep.toast('Saved');
   refresh();
@@ -485,10 +505,31 @@ document.getElementById('betCreate').onclick = async () => {
     await Sweep.api('/api/admin/side-bets', {method:'POST', body: JSON.stringify({
       prompt: document.getElementById('betPrompt').value,
       choices: document.getElementById('betChoices').value.split('\n'),
-      points: document.getElementById('betPoints').value
+      points: document.getElementById('betPoints').value,
+      kind: document.getElementById('betKind').value,
+      open_until: document.getElementById('betUntil').value
     })});
     Sweep.toast('Side bet created');
     refresh();
+  } catch (e) { Sweep.toast(e.data?.message || e.message); }
+};
+document.getElementById('pinPotRecap').onclick = async () => {
+  await Sweep.api('/api/admin/recap', {method:'POST', body: JSON.stringify({pool:'pot'})});
+  Sweep.toast('Pot recap pinned');
+};
+document.getElementById('pinPublicRecap').onclick = async () => {
+  await Sweep.api('/api/admin/recap', {method:'POST', body: JSON.stringify({pool:'public'})});
+  Sweep.toast('Public recap pinned');
+};
+document.getElementById('coalAdd').onclick = async () => {
+  try {
+    await Sweep.api('/api/admin/coalition', {method:'POST', body: JSON.stringify({
+      headline: document.getElementById('coalHeadline').value,
+      source_url: document.getElementById('coalUrl').value,
+      parties: document.getElementById('coalParties').value
+    })});
+    Sweep.toast('Note added');
+    document.getElementById('coalHeadline').value = '';
   } catch (e) { Sweep.toast(e.data?.message || e.message); }
 };
 document.getElementById('feedPreview').onclick = async () => {
