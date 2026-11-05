@@ -111,6 +111,30 @@ body:has(.tv) { padding: 0; }
 .tv-meta { text-align: right; font-family: var(--mono); font-size: clamp(13px, 0.9vw, 26px); color: var(--muted); min-width: 9rem; }
 .tv-meta strong { color: var(--text); font-size: clamp(16px, 1.3vw, 36px); display: block; }
 .tv-header { flex: 0 0 auto; }
+.tv-stage {
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+  display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(380px, 0.9fr);
+  gap: clamp(10px, 1vw, 28px); align-items: stretch;
+}
+.tv-stage .board { display: flex; flex-direction: column; min-height: 0; height: 100%; margin: 0; overflow: hidden; }
+.leader-wrap { min-height: 0; height: 100%; display: flex; flex-direction: column; }
+.tv-rail { min-height: 0; overflow: hidden; display: flex; flex-direction: column; gap: 8px; }
+.tv .house-hero { margin: 0; flex: 1 1 0; min-height: 200px; overflow: hidden; }
+.tv .house-hero .house-card { height: 100%; display: flex; flex-direction: column; min-height: 0; overflow: hidden; }
+.tv .house-svg { flex: 1 1 auto; width: 100%; height: 100%; min-height: 0; max-height: none; }
+.tv .side-panel { height: auto; overflow: visible; flex: 0 0 auto; }
+.tv #beforeCount { flex: 0 0 auto; max-height: 24vh; overflow: auto; }
+.tv #beforeCount .card { margin: 0; }
+.tv.view-latest .tv-stage, .tv.view-estimate .tv-stage, .tv.view-ranks .tv-stage,
+.tv.view-latest #newsStrip, .tv.view-estimate #newsStrip, .tv.view-ranks #newsStrip { display: none; }
+@media (max-width: 900px) {
+  .tv-stage { display: block; height: auto; overflow: visible; }
+}
+@media (min-width: 2000px) {
+  .tv-title { font-size: 4.2rem; }
+  .tv .house-label { font-size: 2.4rem; }
+  .leader-row .name { font-size: 2rem; }
+}
 .board {
   display: grid; grid-template-columns: 1.4fr 1fr; gap: clamp(10px, 1vw, 28px); margin-top: clamp(8px, 0.7vw, 16px);
   flex: 1 1 auto; min-height: 0; height: auto; overflow: hidden;
@@ -344,13 +368,17 @@ th { color: var(--muted); font-weight: 600; }
 .nav-ico { width: 1.4rem; text-align: center; flex: 0 0 auto; }
 .site-foot { text-align: center; color: var(--muted); font-size: 13px; margin: 18px 0 8px; }
 body:has(.tv) .site-header {
-  position: fixed; top: 8px; right: 8px; left: auto; width: auto; min-height: 0;
-  padding: 0; border: 0; background: transparent; backdrop-filter: none; opacity: .55;
+  position: fixed; top: 12px; right: 12px; left: auto; width: auto; min-height: 0;
+  padding: 0; border: 0; background: transparent; backdrop-filter: none; opacity: 1;
 }
 body:has(.tv) .site-title { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
-body:has(.tv) .site-header:hover, body:has(.tv) .site-header:focus-within, body.nav-open .site-header { opacity: 1; }
-body:has(.tv).nav-idle .site-header { opacity: 0; }
-body:has(.tv).nav-idle .site-header:focus-within, body.nav-open:has(.tv) .site-header { opacity: 1; }
+body:has(.tv) .burger {
+  width: 52px; height: 52px; min-width: 52px; min-height: 52px;
+  background: #121c33; border: 2px solid #5dd6ff; border-radius: 14px;
+}
+body:has(.tv) .burger-icon,
+body:has(.tv) .burger-icon::before,
+body:has(.tv) .burger-icon::after { background: #eef3ff; width: 22px; height: 3px; }
 .week-tabs { background: rgba(8,14,28,.55); border: 1px solid #2a4068; border-radius: 999px; padding: 4px; }
 .week-tabs button, .week-tabs a.btn { border-radius: 999px; min-height: 44px; }
 .launcher { display: grid; gap: 12px; }

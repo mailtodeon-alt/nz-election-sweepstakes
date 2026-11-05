@@ -4,6 +4,7 @@ from __future__ import annotations
 import html
 import io
 import json
+import math
 from datetime import datetime
 from urllib.parse import urlparse
 
@@ -165,6 +166,42 @@ def recap_from_state(pool: str, ranked: list[dict], mover: dict | None, when: st
     }
 
 
+_SEAT_RGB = {
+    "Green": (9, 129, 55),
+    "Te Pāti Māori": (178, 0, 29),
+    "Labour": (216, 42, 32),
+    "NZ First": (26, 26, 26),
+    "National": (0, 82, 159),
+    "ACT": (245, 197, 24),
+    "TOP": (50, 181, 232),
+}
+
+
+def _draw_recap_seats(draw: ImageDraw.ImageDraw, payload: dict, top: int) -> None:
+    """Same left-to-right order and solid fills as the on-screen hemicycle."""
+    seats = payload.get("house_seats") or dict(P.PARLIAMENT_2023)
+    order = payload.get("house_order") or list(P.HOUSE_ORDER)
+    seq = []
+    for party in order:
+        seq.extend([party] * int(seats.get(party) or 0))
+    if not seq or top > 1180:
+        return
+    cx, cy, radius = 540, top + 150, 130
+    n = len(seq)
+    for i, party in enumerate(seq):
+        t = 0.5 if n == 1 else i / (n - 1)
+        ang = 3.14159 * (1 - t)
+        row = i % 4
+        rad = radius - row * 16
+        x = cx + rad * math.cos(ang)
+        y = cy - rad * math.sin(ang) * 0.72
+        color = _SEAT_RGB.get(party, (143, 163, 200))
+        r = 7
+        if party == "NZ First":
+            draw.ellipse((x - r - 2, y - r - 2, x + r + 2, y + r + 2), fill=(228, 228, 228))
+        draw.ellipse((x - r, y - r, x + r, y + r), fill=color)
+
+
 def render_recap_png(payload: dict) -> bytes:
     image = Image.new("RGB", (1080, 1350), "#070b14")
     draw = ImageDraw.Draw(image)
@@ -192,6 +229,7 @@ def render_recap_png(payload: dict) -> bytes:
     else:
         line = "Biggest mover: —"
     draw.text((64, y), line, font=body_font, fill="#5dd6ff")
+    _draw_recap_seats(draw, payload, y + 80)
     draw.text((64, 1240), str(payload.get("at") or ""), font=small_font, fill="#8fa3c8")
     draw.text((64, 1288), "Not the prize-pot result", font=small_font, fill="#8fa3c8")
     buf = io.BytesIO()

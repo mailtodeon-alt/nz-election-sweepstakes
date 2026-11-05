@@ -1886,7 +1886,12 @@ def _build_recap(conn, pool: str) -> dict:
         nat = national_actual_from_results(conn, questions, {k: v["value"] for k, v in D.get_results(conn).items()})
         ranked = enrich_leaderboard(N.public_rows_with_side_bets(ranked, conn, nat), questions)
     mover = W.biggest_mover(N.history_series(conn, pool))
-    return W.recap_from_state(pool, ranked, mover, D.iso_now())
+    payload = W.recap_from_state(pool, ranked, mover, D.iso_now())
+    house = house_payload(conn, D.all_settings(conn))
+    view = house.get("live") or house.get("current") or {}
+    payload["house_seats"] = view.get("seats") or {}
+    payload["house_order"] = view.get("order") or []
+    return payload
 
 
 @app.get("/recap")

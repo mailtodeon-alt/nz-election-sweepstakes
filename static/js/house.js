@@ -165,7 +165,7 @@ window.House = (function () {
       draw(card, view);
       legend(card, view);
       if (!compact) blocs(card, view);
-      if (view.note && !compact) {
+      if (view.note && !compact && !(opts && opts.tv)) {
         const note = document.createElement('p');
         note.className = 'muted';
         note.textContent = view.note;

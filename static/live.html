@@ -63,19 +63,20 @@ body { overflow: hidden; }
       <button class="btn secondary sound-toggle" id="soundBtn" title="Toggle leader sound" type="button">🔊 Sound off</button>
     </div>
   </div>
-  <div id="houseHero" class="house-hero"></div>
-  <div id="beforeCount"></div>
-  <div id="newsStrip" class="news-strip"></div>
+  <div class="tv-stage">
   <div class="board">
-    <div>
+    <div class="leader-wrap">
       <div class="leader-list" id="leaders"></div>
     </div>
-    <div class="side-panel">
-      <div class="card" style="margin:0">
+  </div>
+  <div class="tv-rail">
+  <div id="houseHero" class="house-hero"></div>
+  <div class="side-panel">
+      <div class="card" id="partyCard" style="margin:0">
         <h3 style="margin-top:0">Party vote</h3>
         <div class="party-bars" id="partyBars"></div>
       </div>
-      <div class="card" style="margin:0">
+      <div class="card" id="derivedCard" style="margin:0">
         <h3 style="margin-top:0">Derived calls</h3>
         <div id="seatsBox" class="muted">Awaiting results…</div>
       </div>
@@ -86,10 +87,14 @@ body { overflow: hidden; }
         <div class="prize"><div class="muted">2nd</div><div class="amt" id="p2">$20</div></div>
         <div class="prize"><div class="muted">Last</div><div class="amt" style="font-size:0.72em;line-height:1.15" id="pLast">On morning dishes 🍽️</div></div>
       </div>
-      <div class="card" style="margin:0;font-size:0.82em">
+      <div class="card" id="pendingNote" style="margin:0;font-size:0.82em">
         <span class="muted">PENDING questions are not scored as zero. Greyed rows are mathematically OUT.</span>
       </div>
     </div>
+  <div id="beforeCount"></div>
+  </div>
+  </div>
+  <div id="newsStrip" class="news-strip"></div>
     <section id="view-latest" class="weekend-view card">
       <h3 style="margin-top:0">Latest count (not the pot result)</h3>
       <p class="muted">This keeps moving after the 11:30pm freeze. It does not change places, prizes, or the frozen snapshot.</p>
@@ -111,7 +116,6 @@ body { overflow: hidden; }
       <svg id="historyChart" class="chart-svg"></svg>
       <p><a id="boardLink" href="?">Back to the board</a></p>
     </div>
-  </div>
   <div id="ticker" class="ticker hidden"></div>
 </div>
 <script src="/static/js/common.js"></script>
@@ -271,8 +275,14 @@ function render() {
     : 'Biggest mover appears after two saved counts.';
   if (view === 'ranks') Night.loadChart('pot', 'rankChart');
   if (state.settings.weekend_mode === '1') startWeekendRotate();
-  Night.renderAverages(document.getElementById('avgCard'), state.compare_averages);
-  Night.renderSideTable(document.getElementById('sideCard'), state.side_bets, state.side_bet_scores, { potOnlyTable: true });
+  const avgCard = document.getElementById('avgCard');
+  const cmp = state.compare_averages || {};
+  const showAvg = (cmp.pot && cmp.pot.average != null) || (cmp.pub && cmp.pub.average != null);
+  avgCard.hidden = !showAvg;
+  if (showAvg) Night.renderAverages(avgCard, state.compare_averages);
+  const sideCard = document.getElementById('sideCard');
+  sideCard.hidden = !(state.side_bets || []).length;
+  if (!sideCard.hidden) Night.renderSideTable(sideCard, state.side_bets, state.side_bet_scores, { potOnlyTable: true });
   Night.renderTicker(state.settings.ticker_enabled === '0' ? [] : state.ticker);
   if (history) Night.loadChart('pot');
 
@@ -326,13 +336,20 @@ function render() {
   });
   doFlip();
   if (window.House && state.house) {
-    House.mount(document.getElementById('houseHero'), state.house);
+    House.mount(document.getElementById('houseHero'), state.house, { tv: true });
     House.mountBefore(document.getElementById('beforeCount'), state.advance, state.house.has_results);
     House.mountNews(document.getElementById('newsStrip'), state.headlines);
   }
 
   const bars = document.getElementById('partyBars');
-  bars.innerHTML = PARTIES.map(p => {
+  const anyVote = PARTIES.some(p => {
+    const r = resultForKey(p.key);
+    return r && r.value !== '' && r.value != null && !Number.isNaN(parseFloat(r.value));
+  });
+  document.getElementById('partyCard').hidden = !anyVote;
+  if (!anyVote) {
+    bars.innerHTML = '';
+  } else bars.innerHTML = PARTIES.map(p => {
     const r = resultForKey(p.key);
     const v = r ? parseFloat(r.value) : null;
     const src = r ? r.source : '';
@@ -349,12 +366,22 @@ function render() {
   const parties = resultForKey('parties_in');
   const bloc = resultForKey('bloc_61');
   const minor = resultForKey('minor_highest');
-  document.getElementById('seatsBox').innerHTML = `
+  const seatsBox = document.getElementById('seatsBox');
+  const derivedCard = document.getElementById('derivedCard');
+  const pendingNote = document.getElementById('pendingNote');
+  if (!most && !parties && !bloc && !minor) {
+    derivedCard.hidden = true;
+    if (pendingNote) pendingNote.hidden = true;
+  } else {
+    derivedCard.hidden = false;
+    if (pendingNote) pendingNote.hidden = false;
+    seatsBox.innerHTML = `
     <div>Most seats: <strong>${most?most.value:'PENDING'}</strong></div>
     <div>Parties in Parliament: <strong>${parties?parties.value:'PENDING'}</strong></div>
     <div>NAT+ACT+NZF 61+: <strong>${bloc?bloc.value:'PENDING'}</strong></div>
     <div>Highest minor: <strong>${minor?minor.value:'PENDING'}</strong></div>
     <div class="muted" style="margin-top:0.4em;font-size:0.82em">* = manual · seats include overhang · last place: On morning dishes 🍽️</div>`;
+  }
 }
 
 async function load() {
