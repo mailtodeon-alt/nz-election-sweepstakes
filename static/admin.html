@@ -1,0 +1,314 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Admin · Sweepstakes</title>
+<meta name="theme-color" content="#070b14"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Sweepstakes"/>
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png"/>
+<link rel="manifest" href="/manifest.webmanifest"/>
+<link rel="stylesheet" href="/static/css/app.css"/>
+</head>
+<body>
+<div class="wrap" style="max-width:960px">
+  <h1>Admin</h1>
+  <div id="loginCard" class="card">
+    <label>Admin password</label>
+    <input id="pw" type="password" autocomplete="current-password"/>
+    <button id="loginBtn" style="margin-top:10px">Log in</button>
+    <p class="muted" id="loginErr"></p>
+  </div>
+  <div id="app" class="hidden">
+    <div class="row" style="margin-bottom:12px">
+      <span class="pill" id="lockPill">—</span>
+      <span class="pill demo hidden" id="demoPill">DEMO DB</span>
+      <button class="secondary" id="logout">Log out</button>
+      <a class="btn secondary" href="/live" target="_blank">Open TV</a>
+      <a class="btn secondary" href="/api/admin/export.csv">Export CSV</a>
+    </div>
+
+    <div class="card">
+      <h3>Players & links</h3>
+      <div id="players"></div>
+      <p class="muted" style="font-size:12px">Send each person their personal /p/… link. Links are unguessable; regenerating invalidates the old one.</p>
+    </div>
+
+    <div class="card">
+      <h3>Entries lock</h3>
+      <div class="grid2">
+        <div><label>Lock at (ISO, NZ offset)</label><input id="lockAt"/></div>
+        <div style="display:flex;gap:8px;align-items:flex-end">
+          <button id="saveLock">Save lock time</button>
+          <button id="doLock">Lock now</button>
+          <button class="secondary" id="doReopen">Reopen</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Election results (party table)</h3>
+      <p class="muted">Enter vote % (one decimal) and seats per party. Q7–Q10 are derived automatically; you can override below. Marked MANUAL.</p>
+      <div class="grid2">
+        <div><label>% voting places reporting</label><input id="reporting" type="number" step="0.1"/></div>
+        <div><label>Board mode</label>
+          <select id="boardMode"><option value="live">LIVE PROVISIONAL</option><option value="frozen">FROZEN ELECTION NIGHT</option><option value="official">FINAL OFFICIAL</option></select>
+        </div>
+      </div>
+      <div style="overflow:auto;margin-top:12px">
+        <table>
+          <thead><tr><th>Party</th><th>Vote %</th><th>Seats</th></tr></thead>
+          <tbody id="partyTable"></tbody>
+        </table>
+      </div>
+      <p class="muted" id="derivedPreview" style="font-size:13px"></p>
+      <div class="row" style="margin-top:10px">
+        <button id="savePartyTable">Save party table &amp; derive</button>
+        <button class="secondary" id="freezeBtn">Freeze election-night snapshot</button>
+        <button class="secondary" id="officialBtn">Mark official snapshot</button>
+      </div>
+      <details style="margin-top:12px"><summary class="muted">Override individual question results</summary>
+        <div id="resultFields" style="margin-top:12px"></div>
+        <button id="saveResults" class="secondary" style="margin-top:8px">Save overrides</button>
+      </details>
+    </div>
+
+    <div class="card">
+      <h3>Questions</h3>
+      <div id="questions"></div>
+      <button class="secondary" id="addQ">Add question</button>
+    </div>
+
+    <div class="card">
+      <h3>Results feed</h3>
+      <p class="muted" id="feedInfo">Checking…</p>
+      <div class="row">
+        <label style="flex:0;display:flex;align-items:center;gap:6px"><input type="checkbox" id="feedEnabled"/> Enable auto poll (default OFF — 2026 format unverified until night)</label>
+      </div>
+      <div class="grid2" style="margin-top:8px">
+        <div><label>Feed URL</label><input id="feedUrl"/></div>
+        <div><label>Poll seconds</label><input id="feedPoll" type="number"/></div>
+      </div>
+      <button class="secondary" id="feedSave" style="margin-top:8px">Save feed settings</button>
+      <button class="secondary" id="feedPollNow">Poll once now</button>
+    </div>
+
+    <div class="card">
+      <h3>Demo mode</h3>
+      <p class="muted">Uses a separate database. Clearly labelled. Never mixes with real results.</p>
+      <div class="row">
+        <a class="btn secondary" href="/demo/live" target="_blank">Open DEMO TV</a>
+        <button class="secondary" id="demoReset">Reset demo DB</button>
+        <button id="demoStep1">Demo stage 1</button>
+        <button id="demoStep2">Stage 2</button>
+        <button id="demoStep3">Stage 3</button>
+        <button id="demoStep4">Stage 4 (final)</button>
+      </div>
+      <p class="muted" style="font-size:12px">Tip: open /demo/admin in another tab to manage demo players, or use stages above after resetting.</p>
+    </div>
+
+    <div class="card">
+      <h3>Audit log</h3>
+      <div id="audit" style="font-family:var(--mono);font-size:12px;max-height:200px;overflow:auto"></div>
+    </div>
+  </div>
+</div>
+<script src="/static/js/common.js"></script>
+<script>
+let full = null;
+
+const PARTY_ROWS = ["National","Labour","Green","ACT","NZ First","Te Pāti Māori","TOP"];
+function renderPartyTable() {
+  let saved = {};
+  try { saved = JSON.parse(full.settings.party_table_json || "{}"); } catch(e) {}
+  const votes = saved.votes || {};
+  const seats = saved.seats || {};
+  document.getElementById("partyTable").innerHTML = PARTY_ROWS.map(p => `
+    <tr>
+      <td>${p}</td>
+      <td><input data-pv="${p}" type="number" step="0.1" value="${votes[p] ?? ""}"/></td>
+      <td><input data-ps="${p}" type="number" step="1" value="${seats[p] ?? ""}"/></td>
+    </tr>`).join("");
+  const d = saved.derived || {};
+  document.getElementById("derivedPreview").textContent =
+    `Derived → most seats: ${d.most_seats??"—"} · parties in: ${d.parties_in??"—"} · 61+: ${d.bloc_61??"—"} · highest minor: ${d.minor_highest??"—"}`;
+}
+
+const isDemoPath = location.pathname.startsWith('/demo');
+
+async function ensureAuth() {
+  const me = await Sweep.api('/api/admin/me');
+  if (me.admin) { showApp(); await refresh(); }
+}
+document.getElementById('loginBtn').onclick = async () => {
+  try {
+    await Sweep.api('/api/admin/login', { method:'POST', body: JSON.stringify({ password: document.getElementById('pw').value })});
+    showApp(); await refresh();
+  } catch(e) { document.getElementById('loginErr').textContent = 'Wrong password'; }
+};
+document.getElementById('logout').onclick = async () => { await Sweep.api('/api/admin/logout',{method:'POST'}); location.reload(); };
+function showApp(){ document.getElementById('loginCard').classList.add('hidden'); document.getElementById('app').classList.remove('hidden'); }
+
+async function refresh() {
+  full = await Sweep.api('/api/admin/full');
+  if (full.demo) document.getElementById('demoPill').classList.remove('hidden');
+  document.getElementById('lockPill').textContent = full.locked ? 'LOCKED' : 'OPEN';
+  document.getElementById('lockPill').className = 'pill ' + (full.locked?'locked':'live');
+  document.getElementById('lockAt').value = full.settings.lock_at || '';
+  document.getElementById('reporting').value = full.settings.reporting_pct || '';
+  document.getElementById('boardMode').value = full.settings.board_mode || 'live';
+  document.getElementById('feedEnabled').checked = full.settings.feed_enabled === '1';
+  document.getElementById('feedUrl').value = full.settings.feed_url || '';
+  document.getElementById('feedPoll').value = full.settings.feed_poll_seconds || '90';
+  document.getElementById('feedInfo').textContent =
+    `Last success: ${full.feed.last_success_at||'never'} · Last attempt: ${full.feed.last_attempt_at||'—'} · Error: ${full.feed.last_error||'none'}`;
+
+  // players
+  const origin = location.origin;
+  const prefix = full.demo ? '/demo' : '';
+  document.getElementById('players').innerHTML = full.players.filter(p=>p.active).map(p => {
+    const link = origin + prefix + '/p/' + p.token;
+    return `<div style="display:grid;grid-template-columns:40px 1fr 2fr auto;gap:8px;align-items:center;margin-bottom:8px">
+      <strong>#${p.slot}</strong>
+      <input data-rename="${p.id}" value="${p.name.replace(/"/g,'&quot;')}"/>
+      <input readonly value="${link}" onclick="this.select()"/>
+      <button class="secondary" data-regen="${p.id}">New link</button>
+    </div>`;
+  }).join('');
+  document.querySelectorAll('[data-rename]').forEach(el => {
+    el.onchange = async () => {
+      await Sweep.api('/api/admin/players',{method:'POST',body:JSON.stringify({id:+el.dataset.rename,name:el.value})});
+      Sweep.toast('Renamed'); refresh();
+    };
+  });
+  document.querySelectorAll('[data-regen]').forEach(el => {
+    el.onclick = async () => {
+      if (!confirm('Regenerate link? Old link stops working.')) return;
+      await Sweep.api('/api/admin/players/'+el.dataset.regen+'/regenerate-token',{method:'POST'});
+      refresh();
+    };
+  });
+
+  renderPartyTable();
+  // results fields
+  const activeQs = full.questions.filter(q=>q.active);
+  document.getElementById('resultFields').innerHTML = activeQs.map(q => {
+    const r = full.results[String(q.id)];
+    return `<div style="margin-bottom:8px">
+      <label>${q.label} ${r?`<span class="pill ${r.source}">${r.source}</span>`:''}</label>
+      <input data-rid="${q.id}" value="${r&&r.value!=null?r.value:''}" placeholder="leave blank = PENDING"/>
+    </div>`;
+  }).join('');
+
+  // questions
+  document.getElementById('questions').innerHTML = activeQs.map(q =>
+    `<div style="display:grid;grid-template-columns:2fr 1fr 80px 60px auto;gap:6px;margin-bottom:6px;align-items:center">
+      <input data-qlabel="${q.id}" value="${q.label.replace(/"/g,'&quot;')}"/>
+      <select data-qtype="${q.id}">
+        <option value="vote_band" ${q.scoring_type==='vote_band'?'selected':''}>vote_band</option>
+        <option value="seat_band" ${q.scoring_type==='seat_band'?'selected':''}>seat_band</option>
+        <option value="exact_choice" ${q.scoring_type==='exact_choice'?'selected':''}>exact_choice</option>
+      </select>
+      <input data-qord="${q.id}" type="number" value="${q.sort_order}"/>
+      <button class="secondary" data-qsave="${q.id}">Save</button>
+      <button class="danger" data-qdel="${q.id}">×</button>
+    </div>`
+  ).join('');
+  document.querySelectorAll('[data-qsave]').forEach(btn => {
+    btn.onclick = async () => {
+      const id = btn.dataset.qsave;
+      await Sweep.api('/api/admin/questions',{method:'POST',body:JSON.stringify({
+        id:+id,
+        label: document.querySelector(`[data-qlabel="${id}"]`).value,
+        scoring_type: document.querySelector(`[data-qtype="${id}"]`).value,
+        sort_order: +document.querySelector(`[data-qord="${id}"]`).value,
+        meta: full.questions.find(q=>q.id==id)?.meta || {}
+      })});
+      Sweep.toast('Question saved'); refresh();
+    };
+  });
+  document.querySelectorAll('[data-qdel]').forEach(btn => {
+    btn.onclick = async () => {
+      await Sweep.api('/api/admin/questions',{method:'POST',body:JSON.stringify({id:+btn.dataset.qdel,delete:true})});
+      refresh();
+    };
+  });
+
+  document.getElementById('audit').innerHTML = (full.audit||[]).map(a =>
+    `${a.at} · ${a.actor} · ${a.action}`).join('<br>');
+}
+
+document.getElementById('saveLock').onclick = async () => {
+  await Sweep.api('/api/admin/settings',{method:'POST',body:JSON.stringify({lock_at: document.getElementById('lockAt').value})});
+  Sweep.toast('Lock time saved'); refresh();
+};
+document.getElementById('doLock').onclick = async () => {
+  await Sweep.api('/api/admin/lock',{method:'POST',body:JSON.stringify({action:'lock'})});
+  Sweep.toast('Locked'); refresh();
+};
+document.getElementById('doReopen').onclick = async () => {
+  await Sweep.api('/api/admin/lock',{method:'POST',body:JSON.stringify({action:'reopen', lock_at: document.getElementById('lockAt').value})});
+  Sweep.toast('Reopened'); refresh();
+};
+document.getElementById('saveResults').onclick = async () => {
+  const results = {};
+  document.querySelectorAll('[data-rid]').forEach(el => { results[el.dataset.rid] = el.value; });
+  await Sweep.api('/api/admin/results',{method:'POST',body:JSON.stringify({
+    results, source:'manual', reporting_pct: document.getElementById('reporting').value
+  })});
+  await Sweep.api('/api/admin/settings',{method:'POST',body:JSON.stringify({board_mode: document.getElementById('boardMode').value})});
+  Sweep.toast('Results saved'); refresh();
+};
+document.getElementById('freezeBtn').onclick = async () => {
+  await Sweep.api('/api/admin/snapshot',{method:'POST',body:JSON.stringify({kind:'election_night',label:'Election night freeze'})});
+  Sweep.toast('Frozen'); refresh();
+};
+document.getElementById('officialBtn').onclick = async () => {
+  await Sweep.api('/api/admin/snapshot',{method:'POST',body:JSON.stringify({kind:'official',label:'Official results'})});
+  Sweep.toast('Official snapshot'); refresh();
+};
+document.getElementById('feedSave').onclick = async () => {
+  await Sweep.api('/api/admin/settings',{method:'POST',body:JSON.stringify({
+    feed_enabled: document.getElementById('feedEnabled').checked ? '1':'0',
+    feed_url: document.getElementById('feedUrl').value,
+    feed_poll_seconds: document.getElementById('feedPoll').value
+  })});
+  Sweep.toast('Feed settings saved'); refresh();
+};
+document.getElementById('feedPollNow').onclick = async () => {
+  const r = await Sweep.api('/api/admin/feed/poll',{method:'POST',body:'{}'});
+  Sweep.toast(r.ok ? 'Poll ok' : ('Poll: '+(r.reason||r.error||'fail'))); refresh();
+};
+document.getElementById('addQ').onclick = async () => {
+  const label = prompt('Question label?');
+  if (!label) return;
+  const type = prompt('Type: vote_band | seat_band | exact_choice', 'vote_band');
+  await Sweep.api('/api/admin/questions',{method:'POST',body:JSON.stringify({label, scoring_type: type||'vote_band', sort_order: 99})});
+  refresh();
+};
+document.getElementById('demoReset').onclick = async () => {
+  // demo reset always hits demo DB via header — force path
+  const res = await fetch('/api/admin/demo/reset?demo=1',{method:'POST',credentials:'same-origin',headers:{'X-Demo':'1','Content-Type':'application/json'}});
+  Sweep.toast('Demo reset: '+res.status); 
+};
+async function demoStep(n){
+  await fetch('/api/admin/demo/step?demo=1',{method:'POST',credentials:'same-origin',headers:{'X-Demo':'1','Content-Type':'application/json'},body:JSON.stringify({stage:n})});
+  Sweep.toast('Demo stage '+n);
+}
+document.getElementById('demoStep1').onclick=()=>demoStep(1);
+document.getElementById('demoStep2').onclick=()=>demoStep(2);
+document.getElementById('demoStep3').onclick=()=>demoStep(3);
+document.getElementById('demoStep4').onclick=()=>demoStep(4);
+
+ensureAuth();
+Sweep.subscribe(()=>{ if(full) refresh(); });
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+</script>
+</body></html>
