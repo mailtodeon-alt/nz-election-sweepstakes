@@ -22,12 +22,16 @@
     <p class="muted" id="loginErr"></p>
   </div>
   <div id="app" class="hidden">
-    <div class="row" style="margin-bottom:12px">
+    <div class="night-bar" role="status">
       <span class="pill" id="lockPill">—</span>
       <span class="pill demo hidden" id="demoPill">DEMO DB</span>
-      <button class="secondary" id="logout">Log out</button>
+      <a class="btn" href="#resultsCard">Enter results</a>
       <a class="btn secondary" href="/live" target="_blank">Open TV</a>
-      <a class="btn secondary" href="/api/admin/export.csv">Export CSV</a>
+      <a class="btn secondary" href="#sideBetsCard">Side bets</a>
+      <a class="btn secondary" href="#tickerCard">Ticker</a>
+      <a class="btn secondary" href="#feedCard">Feed</a>
+      <button class="secondary" id="logout" type="button">Log out</button>
+      <a class="btn secondary" id="potCsv" href="/api/admin/export.csv">Export CSV</a>
     </div>
 
     <div class="card">
@@ -37,6 +41,28 @@
     </div>
 
     <div class="card">
+      <h3>Public players</h3>
+      <p class="muted">Play-for-fun entries. They are not in the pot, not on <a href="/live" target="_blank">/live</a>, and not in the pot CSV. Their board is <a id="publicBoard" href="/open/live" target="_blank">/open/live</a>.</p>
+      <div class="grid2">
+        <div>
+          <label style="display:flex;align-items:center;gap:8px">
+            <input type="checkbox" id="publicOpen" style="width:auto"/> Public sign-ups open
+          </label>
+        </div>
+        <div>
+          <label>Public player cap</label>
+          <input id="publicCap" type="number" min="0" max="10000"/>
+        </div>
+      </div>
+      <div class="row" style="margin-top:8px">
+        <button id="savePublic" type="button">Save public settings</button>
+        <a class="btn secondary" id="publicCsv" href="/api/admin/export-public.csv">Export public CSV</a>
+      </div>
+      <p class="muted" id="publicCount" style="margin-top:10px"></p>
+      <div id="publicPlayers"></div>
+    </div>
+
+    <div class="card" id="lockCard">
       <h3>Entries lock</h3>
       <div class="grid2">
         <div><label>Lock at (ISO, NZ offset)</label><input id="lockAt"/></div>
@@ -48,8 +74,9 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card" id="resultsCard">
       <h3>Election results (party table)</h3>
+      <p class="muted">Do this first on the night. One decimal for vote %. Blank means still waiting, not zero.</p>
       <p class="muted">Enter vote % (one decimal) and seats per party. Q7–Q10 are derived automatically; you can override below. Marked MANUAL.</p>
       <div class="grid2">
         <div><label>% voting places reporting</label><input id="reporting" type="number" step="0.1"/></div>
@@ -81,18 +108,61 @@
       <button class="secondary" id="addQ">Add question</button>
     </div>
 
-    <div class="card">
+    <div class="card" id="feedCard">
       <h3>Results feed</h3>
+      <p class="muted">Stays <strong>off</strong> until you enable it. Default interval for a new database is 3 minutes (180s). Manual values are never overwritten. A bad fetch does not clear what you typed.</p>
       <p class="muted" id="feedInfo">Checking…</p>
       <div class="row">
-        <label style="flex:0;display:flex;align-items:center;gap:6px"><input type="checkbox" id="feedEnabled"/> Enable auto poll (default OFF — 2026 format unverified until night)</label>
+        <label style="flex:0;display:flex;align-items:center;gap:6px"><input type="checkbox" id="feedEnabled" style="width:auto"/> Enable auto poll</label>
       </div>
       <div class="grid2" style="margin-top:8px">
         <div><label>Feed URL</label><input id="feedUrl"/></div>
-        <div><label>Poll seconds</label><input id="feedPoll" type="number"/></div>
+        <div><label>Poll seconds (180 = 3 min)</label><input id="feedPoll" type="number" min="30" max="600"/></div>
       </div>
       <button class="secondary" id="feedSave" style="margin-top:8px">Save feed settings</button>
-      <button class="secondary" id="feedPollNow">Poll once now</button>
+      <button class="secondary" id="feedPollNow">Poll once and apply</button>
+      <button class="secondary" id="feedPreview">Dry run / preview</button>
+      <pre id="feedPreviewOut" class="muted" style="white-space:pre-wrap;font-size:12px"></pre>
+    </div>
+
+    <div class="card" id="tickerCard">
+      <h3>Reactions and ticker</h3>
+      <label style="display:flex;align-items:center;gap:8px"><input type="checkbox" id="reactionsOn" style="width:auto"/> Reactions on</label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="tickerOn" style="width:auto"/> Ticker on</label>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px"><input type="checkbox" id="weekendOn" style="width:auto"/> Weekend mode (TV rotates Board / Latest / Estimate / Ranks)</label>
+      <button id="saveNight" style="margin-top:8px" type="button">Save</button>
+      <div class="row" style="margin-top:10px">
+        <button type="button" class="secondary" id="pinPotRecap">Pin pot recap</button>
+        <button type="button" class="secondary" id="pinPublicRecap">Pin public recap</button>
+        <a class="btn secondary" href="/recap" target="_blank">Open recap</a>
+        <a class="btn secondary" href="/coalition" target="_blank">Coalition</a>
+      </div>
+      <label style="margin-top:12px">Coalition headline</label>
+      <input id="coalHeadline" maxlength="180"/>
+      <label>Source URL (http or https)</label>
+      <input id="coalUrl" placeholder="https://"/>
+      <label>Parties</label>
+      <input id="coalParties" placeholder="National, ACT"/>
+      <button type="button" id="coalAdd" class="secondary" style="margin-top:8px">Add note</button>
+      <div id="tickerAdmin" style="margin-top:12px"></div>
+    </div>
+
+    <div class="card" id="sideBetsCard">
+      <h3>Side bets</h3>
+      <p class="muted">Bonus points land on the public leaderboard and the side-bet table on the TV. They do not change pot places, prizes, the frozen snapshot, or the pot CSV.</p>
+      <label>Question</label>
+      <input id="betPrompt" maxlength="140" placeholder="Will the specials flip a seat?"/>
+      <label style="margin-top:8px">Options, one per line</label>
+      <textarea id="betChoices" rows="3">Yes
+No</textarea>
+      <label style="margin-top:8px">Kind</label>
+      <select id="betKind"><option value="choice">Yes/No or choices</option><option value="closest">Closest number wins</option></select>
+      <label>Open until (optional ISO time)</label>
+      <input id="betUntil" placeholder="2026-11-27T12:00:00+13:00"/>
+      <label style="margin-top:8px">Points</label>
+      <input id="betPoints" type="number" value="5" min="1" max="50"/>
+      <button id="betCreate" type="button" style="margin-top:8px">Create side bet</button>
+      <div id="betList" style="margin-top:12px"></div>
     </div>
 
     <div class="card">
@@ -106,7 +176,7 @@
         <button id="demoStep3">Stage 3</button>
         <button id="demoStep4">Stage 4 (final)</button>
       </div>
-      <p class="muted" style="font-size:12px">Tip: open /demo/admin in another tab to manage demo players, or use stages above after resetting.</p>
+      <p class="muted" style="font-size:12px">Reset demo, then stages 1–4, and open /demo/live. That board has sample ticker lines, a side bet, score history, and the group-vs-public panel. Open a demo player link to send a reaction.</p>
     </div>
 
     <div class="card">
@@ -164,6 +234,7 @@ async function refresh() {
   document.getElementById('feedPoll').value = full.settings.feed_poll_seconds || '90';
   document.getElementById('feedInfo').textContent =
     `Last success: ${full.feed.last_success_at||'never'} · Last attempt: ${full.feed.last_attempt_at||'—'} · Error: ${full.feed.last_error||'none'}`;
+  document.getElementById('potCsv').href = '/api/admin/export.csv' + (full.demo ? '?demo=1' : '');
 
   // players
   const origin = location.origin;
@@ -189,6 +260,53 @@ async function refresh() {
       await Sweep.api('/api/admin/players/'+el.dataset.regen+'/regenerate-token',{method:'POST'});
       refresh();
     };
+  });
+
+  const pubPrefix = full.demo ? '/demo' : '';
+  document.getElementById('publicBoard').href = pubPrefix + '/open/live';
+  document.getElementById('publicOpen').checked = (full.settings.public_signups_open || '1') === '1';
+  document.getElementById('publicCap').value = full.settings.public_player_cap || '200';
+  document.getElementById('publicCsv').href = '/api/admin/export-public.csv' + (full.demo ? '?demo=1' : '');
+  const pubList = full.public_players || [];
+  document.getElementById('publicCount').textContent =
+    pubList.length + ' public player' + (pubList.length === 1 ? '' : 's') +
+    ' · cap ' + (full.settings.public_player_cap || '200');
+  const pubBox = document.getElementById('publicPlayers');
+  pubBox.innerHTML = '';
+  pubList.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'public-row';
+    const name = document.createElement('input');
+    name.value = p.display_name || p.name || '';
+    name.maxLength = 24;
+    name.onchange = async () => {
+      try {
+        await Sweep.api('/api/admin/players', {method:'POST', body: JSON.stringify({id: p.id, name: name.value})});
+        Sweep.toast('Renamed');
+        refresh();
+      } catch (e) { Sweep.toast(e.data?.message || e.message); }
+    };
+    const sub = document.createElement('span');
+    sub.className = 'pill ' + (p.submitted ? 'live' : 'locked');
+    sub.textContent = p.submitted ? 'IN' : 'WAITING';
+    const score = document.createElement('strong');
+    score.textContent = p.total == null ? '—' : String(p.total);
+    const link = document.createElement('input');
+    link.readOnly = true;
+    link.value = location.origin + pubPrefix + '/p/' + p.token;
+    link.onclick = () => link.select();
+    const rm = document.createElement('button');
+    rm.className = 'danger';
+    rm.type = 'button';
+    rm.textContent = 'Remove';
+    rm.onclick = async () => {
+      if (!confirm('Remove this public player from the board? Their link will stop working.')) return;
+      await Sweep.api('/api/admin/public-players/' + p.id + '/remove', {method:'POST', body:'{}'});
+      Sweep.toast('Removed');
+      refresh();
+    };
+    row.append(name, sub, score, link, rm);
+    pubBox.appendChild(row);
   });
 
   renderPartyTable();
@@ -238,13 +356,29 @@ async function refresh() {
 
   document.getElementById('audit').innerHTML = (full.audit||[]).map(a =>
     `${a.at} · ${a.actor} · ${a.action}`).join('<br>');
+  document.getElementById('reactionsOn').checked = (full.settings.reactions_enabled || '1') === '1';
+  document.getElementById('tickerOn').checked = (full.settings.ticker_enabled || '1') === '1';
+  document.getElementById('weekendOn').checked = (full.settings.weekend_mode || '0') === '1';
+  renderSideBets(full.side_bets || []);
+  loadTickerAdmin();
 }
 
+document.getElementById('savePublic').onclick = async () => {
+  try {
+    await Sweep.api('/api/admin/settings', {method:'POST', body: JSON.stringify({
+      public_signups_open: document.getElementById('publicOpen').checked ? '1' : '0',
+      public_player_cap: document.getElementById('publicCap').value
+    })});
+    Sweep.toast('Public settings saved');
+    refresh();
+  } catch (e) { Sweep.toast(e.data?.message || e.message); }
+};
 document.getElementById('saveLock').onclick = async () => {
   await Sweep.api('/api/admin/settings',{method:'POST',body:JSON.stringify({lock_at: document.getElementById('lockAt').value})});
   Sweep.toast('Lock time saved'); refresh();
 };
 document.getElementById('doLock').onclick = async () => {
+  if (!confirm('Lock entries now? Players will not be able to change their picks.')) return;
   await Sweep.api('/api/admin/lock',{method:'POST',body:JSON.stringify({action:'lock'})});
   Sweep.toast('Locked'); refresh();
 };
@@ -262,6 +396,7 @@ document.getElementById('saveResults').onclick = async () => {
   Sweep.toast('Results saved'); refresh();
 };
 document.getElementById('freezeBtn').onclick = async () => {
+  if (!confirm('Freeze the pot snapshot now? The TV board will keep this result.')) return;
   await Sweep.api('/api/admin/snapshot',{method:'POST',body:JSON.stringify({kind:'election_night',label:'Election night freeze'})});
   Sweep.toast('Frozen'); refresh();
 };
@@ -277,6 +412,146 @@ document.getElementById('feedSave').onclick = async () => {
   })});
   Sweep.toast('Feed settings saved'); refresh();
 };
+function renderSideBets(bets) {
+  const box = document.getElementById('betList');
+  box.innerHTML = '';
+  (bets || []).filter(b => b.status !== 'deleted').forEach(b => {
+    const row = document.createElement('div');
+    row.style.marginBottom = '8px';
+    const label = document.createElement('div');
+    label.textContent = (b.prompt || '') + ' · ' + b.points + ' pts · ' + b.status + (b.answer ? ' · ' + b.answer : '');
+    row.appendChild(label);
+    const actions = document.createElement('div');
+    actions.className = 'row';
+    const close = document.createElement('button');
+    close.className = 'secondary';
+    close.type = 'button';
+    close.textContent = b.status === 'open' ? 'Close' : 'Open';
+    close.onclick = async () => {
+      await Sweep.api('/api/admin/side-bets/' + b.id, {method:'POST', body: JSON.stringify({action: b.status === 'open' ? 'close' : 'open'})});
+      refresh();
+    };
+    const answer = document.createElement('select');
+    (b.choices || []).forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c; opt.textContent = c;
+      if (c === b.answer) opt.selected = true;
+      answer.appendChild(opt);
+    });
+    const set = document.createElement('button');
+    set.type = 'button';
+    set.textContent = 'Set answer';
+    set.onclick = async () => {
+      await Sweep.api('/api/admin/side-bets/' + b.id, {method:'POST', body: JSON.stringify({action:'answer', answer: answer.value})});
+      Sweep.toast('Answer set');
+      refresh();
+    };
+    const del = document.createElement('button');
+    del.className = 'danger';
+    del.type = 'button';
+    del.textContent = 'Remove';
+    del.onclick = async () => {
+      await Sweep.api('/api/admin/side-bets/' + b.id, {method:'POST', body: JSON.stringify({action:'delete'})});
+      refresh();
+    };
+    actions.append(close, answer, set, del);
+    row.appendChild(actions);
+    box.appendChild(row);
+  });
+}
+async function loadTickerAdmin() {
+  const box = document.getElementById('tickerAdmin');
+  let data = {messages: []};
+  try { data = await Sweep.api('/api/admin/ticker'); } catch (e) { return; }
+  box.innerHTML = '';
+  (data.messages || []).forEach(m => {
+    const row = document.createElement('div');
+    row.style.marginBottom = '6px';
+    const text = document.createElement('span');
+    text.textContent = (m.hidden ? '[hidden] ' : '') + (m.featured ? '[TV] ' : '') + m.pool + ' · ' + m.player_name + ': ' + m.body;
+    row.appendChild(text);
+    const feature = document.createElement('button');
+    feature.className = 'secondary';
+    feature.type = 'button';
+    feature.textContent = m.featured ? 'Unfeature' : 'Feature on TV';
+    feature.onclick = async () => {
+      await Sweep.api('/api/admin/ticker/' + m.id, {method:'POST', body: JSON.stringify({action: m.featured ? 'unfeature' : 'feature'})});
+      loadTickerAdmin();
+    };
+    const hide = document.createElement('button');
+    hide.className = 'secondary';
+    hide.type = 'button';
+    hide.textContent = 'Hide';
+    hide.onclick = async () => {
+      await Sweep.api('/api/admin/ticker/' + m.id, {method:'POST', body: JSON.stringify({action:'hide'})});
+      loadTickerAdmin();
+    };
+    const del = document.createElement('button');
+    del.className = 'danger';
+    del.type = 'button';
+    del.textContent = 'Delete';
+    del.onclick = async () => {
+      await Sweep.api('/api/admin/ticker/' + m.id, {method:'POST', body: JSON.stringify({action:'delete'})});
+      loadTickerAdmin();
+    };
+    row.append(feature, hide, del);
+    box.appendChild(row);
+  });
+}
+document.getElementById('saveNight').onclick = async () => {
+  await Sweep.api('/api/admin/settings', {method:'POST', body: JSON.stringify({
+    reactions_enabled: document.getElementById('reactionsOn').checked ? '1' : '0',
+    ticker_enabled: document.getElementById('tickerOn').checked ? '1' : '0',
+    weekend_mode: document.getElementById('weekendOn').checked ? '1' : '0'
+  })});
+  Sweep.toast('Saved');
+  refresh();
+};
+document.getElementById('betCreate').onclick = async () => {
+  try {
+    await Sweep.api('/api/admin/side-bets', {method:'POST', body: JSON.stringify({
+      prompt: document.getElementById('betPrompt').value,
+      choices: document.getElementById('betChoices').value.split('\n'),
+      points: document.getElementById('betPoints').value,
+      kind: document.getElementById('betKind').value,
+      open_until: document.getElementById('betUntil').value
+    })});
+    Sweep.toast('Side bet created');
+    refresh();
+  } catch (e) { Sweep.toast(e.data?.message || e.message); }
+};
+document.getElementById('pinPotRecap').onclick = async () => {
+  await Sweep.api('/api/admin/recap', {method:'POST', body: JSON.stringify({pool:'pot'})});
+  Sweep.toast('Pot recap pinned');
+};
+document.getElementById('pinPublicRecap').onclick = async () => {
+  await Sweep.api('/api/admin/recap', {method:'POST', body: JSON.stringify({pool:'public'})});
+  Sweep.toast('Public recap pinned');
+};
+document.getElementById('coalAdd').onclick = async () => {
+  try {
+    await Sweep.api('/api/admin/coalition', {method:'POST', body: JSON.stringify({
+      headline: document.getElementById('coalHeadline').value,
+      source_url: document.getElementById('coalUrl').value,
+      parties: document.getElementById('coalParties').value
+    })});
+    Sweep.toast('Note added');
+    document.getElementById('coalHeadline').value = '';
+  } catch (e) { Sweep.toast(e.data?.message || e.message); }
+};
+document.getElementById('feedPreview').onclick = async () => {
+  const out = document.getElementById('feedPreviewOut');
+  out.textContent = 'Fetching…';
+  try {
+    const r = await Sweep.api('/api/admin/feed/preview', {method:'POST', body:'{}'});
+    if (!r.ok) { out.textContent = r.reason || r.error || r.message || 'Preview failed. Nothing was changed.'; return; }
+    const lines = ['Preview only — not applied.'];
+    Object.entries(r.votes || {}).forEach(([k, v]) => lines.push(k + '  ' + v + '%  seats ' + ((r.seats || {})[k] ?? '—')));
+    if (r.reporting_pct != null) lines.push('Counted ' + r.reporting_pct + '%');
+    out.textContent = lines.join('\n');
+  } catch (e) { out.textContent = e.data?.message || e.message; }
+};
+
 document.getElementById('feedPollNow').onclick = async () => {
   const r = await Sweep.api('/api/admin/feed/poll',{method:'POST',body:'{}'});
   Sweep.toast(r.ok ? 'Poll ok' : ('Poll: '+(r.reason||r.error||'fail'))); refresh();

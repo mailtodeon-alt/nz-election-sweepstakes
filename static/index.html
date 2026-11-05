@@ -17,12 +17,13 @@
   <div class="hero">
     <span class="pill" id="demoPill" style="display:none">DEMO MODE</span>
     <h1 id="title">NZ Election Night Sweepstakes 2026</h1>
-    <p>$20 in · $120 pool · 1st $100 · 2nd $20 · six friends · no politics, just points</p>
+    <p>Six friends, ten calls, one TV. Or play the same questions for fun, outside the money.</p>
   </div>
   <div class="card">
-    <h3>Jump in</h3>
+    <h3>Start here</h3>
     <div class="row">
       <a class="btn" href="/join">Join / get your link</a>
+      <a class="btn secondary" id="funLink" href="/open">Play for fun (not in the pot)</a>
       <a class="btn secondary" href="/live">TV Leaderboard</a>
       <a class="btn secondary" href="/compare">Compare</a>
       <a class="btn secondary" href="/admin">Admin</a>
@@ -32,15 +33,17 @@
   <div class="card">
     <h3>How scoring works</h3>
     <ul class="muted">
-      <li>Party vote %: within 0.5 → 10 pts · 1.0 → 7 · 2.0 → 4</li>
-      <li>Seats (incl. overhang): exact → 10 · ±1 → 7 · ±2 → 4</li>
-      <li>Most seats: correct → 10. Tie-break: higher party vote % wins.</li>
-      <li>Unavailable results stay PENDING — not zero.</li>
+      <li>Party-vote bands: exact band 10 points, the next band along 4.</li>
+      <li>Parties in Parliament: exact 10, next band 5.</li>
+      <li>Most seats is 5. National + ACT + NZ First over 61 is 15. Highest minor is 10.</li>
+      <li>A missing result stays pending. It is not scored as zero.</li>
+      <li>If you tie, the closer guess at National’s exact party vote wins.</li>
     </ul>
   </div>
 </div>
 <script src="/static/js/common.js"></script>
 <script>
+if (Sweep.isDemo) document.getElementById('funLink').href = '/demo/open';
 Sweep.api('/api/state').then(s => {
   document.getElementById('title').textContent = s.settings.event_title || 'Sweepstakes';
   document.getElementById('lockAt').textContent = s.settings.lock_at || '';

@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Recap</title>
+<meta name="theme-color" content="#070b14"/>
+<link rel="stylesheet" href="/static/css/app.css"/>
+</head>
+<body>
+<div class="wrap" style="max-width:1100px">
+  <p><a id="homeLink" href="/">← Board</a> · <a id="pngLink" href="/recap.png">Download PNG</a></p>
+  <article class="recap-card" id="card">
+    <p class="muted" id="kicker">Loading…</p>
+    <h1 id="leader">—</h1>
+    <p id="total"></p>
+    <div id="top"></div>
+    <p id="best"></p>
+    <p id="worst"></p>
+    <p id="mover"></p>
+    <p class="muted" id="when"></p>
+  </article>
+</div>
+<script src="/static/js/common.js"></script>
+<script>
+const publicRecap = location.pathname.includes('/open/recap') || location.pathname.endsWith('/open/recap');
+const pool = publicRecap ? 'public' : 'pot';
+if (Sweep.isDemo) {
+  document.getElementById('homeLink').href = publicRecap ? '/demo/open/live' : '/demo/live';
+  document.getElementById('pngLink').href = (publicRecap ? '/open/recap.png' : '/recap.png') + '?demo=1';
+} else if (publicRecap) {
+  document.getElementById('homeLink').href = '/open/live';
+  document.getElementById('pngLink').href = '/open/recap.png';
+}
+Sweep.api('/api/recap?pool=' + pool).then(card => {
+  document.getElementById('kicker').textContent = card.title || 'Recap';
+  document.getElementById('leader').textContent = card.leader || '—';
+  document.getElementById('total').textContent = (card.leader_total == null ? '—' : card.leader_total) + ' pts';
+  document.getElementById('top').innerHTML = (card.top || []).map(row =>
+    '<div>' + row.place + '. ' + row.name + ' · ' + row.total + '</div>').join('');
+  document.getElementById('best').textContent = 'Best call: ' + (card.best_call || '—');
+  document.getElementById('worst').textContent = 'Worst call: ' + (card.worst_call || '—');
+  const m = card.biggest_mover;
+  document.getElementById('mover').textContent = m ? ('Biggest mover: ' + m.name + ' ' + m.from_place + ' → ' + m.to_place) : 'Biggest mover: —';
+  document.getElementById('when').textContent = card.at || '';
+});
+</script>
+</body></html>

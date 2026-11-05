@@ -41,11 +41,44 @@ PARTY_SEAT_KEYS = {
 }
 
 
+# 2023 archive election.xml identifies parties by p_no. These ids are the
+# ones published for that file; parties.xml is preferred when we can fetch it.
+BUILTIN_PNO = {
+    "5": "ACT",
+    "10": "Green",
+    "13": "Labour",
+    "14": "Te Pāti Māori",
+    "16": "National",
+    "17": "NZ First",
+    "24": "TOP",
+}
+
+CANONICAL = {
+    "national": "National",
+    "national party": "National",
+    "labour": "Labour",
+    "labour party": "Labour",
+    "green": "Green",
+    "green party": "Green",
+    "act": "ACT",
+    "act new zealand": "ACT",
+    "nz first": "NZ First",
+    "new zealand first": "NZ First",
+    "new zealand first party": "NZ First",
+    "te pati maori": "Te Pāti Māori",
+    "maori party": "Te Pāti Māori",
+    "top": "TOP",
+    "the opportunities party (top)": "TOP",
+    "the opportunities party": "TOP",
+}
+
+
 class FeedPoller:
-    def __init__(self, broadcast_fn=None):
+    def __init__(self, broadcast_fn=None, on_applied=None):
         self._thread: Optional[threading.Thread] = None
         self._stop = threading.Event()
         self.broadcast = broadcast_fn or (lambda *_: None)
+        self.on_applied = on_applied
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -66,7 +99,7 @@ class FeedPoller:
             # sleep in chunks so stop is responsive
             conn = D.connect(False)
             try:
-                secs = int(D.get_setting(conn, "feed_poll_seconds", "90") or "90")
+                secs = int(D.get_setting(conn, "feed_poll_seconds", "180") or "180")
             finally:
                 conn.close()
             secs = max(30, min(secs, 600))
@@ -86,70 +119,91 @@ class FeedPoller:
         finally:
             conn.close()
 
-    def poll_once(self, demo: bool = False) -> dict:
-        """Attempt one poll. Returns status dict. Does not overwrite MANUAL results."""
+    def poll_once(self, demo: bool = False, *, body: Optional[bytes] = None, parties_body: Optional[bytes] = None, apply: bool = True) -> dict:
+        """Fetch (or accept bytes) and optionally apply. Never clears manual values.
+
+        A bad, empty, or failed fetch records an error and leaves results alone.
+        Exceptions are caught so a preview or a poll cannot take down the process.
+        """
+        try:
+            return self._poll_once(demo, body=body, parties_body=parties_body, apply=apply)
+        except Exception as e:
+            try:
+                self._record_error(str(e))
+            except Exception:
+                pass
+            return {"ok": False, "error": "feed_failed", "message": str(e)[:300]}
+
+    def preview(self, demo: bool = False) -> dict:
+        """Fetch and parse without writing results. Works while the poller is off."""
+        result = self.poll_once(demo=demo, apply=False)
+        result["applied"] = False
+        result["preview"] = True
+        return result
+
+    def _poll_once(self, demo: bool, *, body: Optional[bytes], parties_body: Optional[bytes], apply: bool) -> dict:
         conn = D.connect(demo)
         try:
             enabled = D.get_setting(conn, "feed_enabled", "0") == "1"
             url = D.get_setting(conn, "feed_url", DEFAULT_FEED) or DEFAULT_FEED
-            conn.execute(
-                "UPDATE feed_status SET last_attempt_at=?, enabled=? WHERE id=1",
-                (D.iso_now(), 1 if enabled else 0),
-            )
-            conn.commit()
-            if not enabled:
-                return {"ok": False, "reason": "feed_disabled"}
-
-            # Try election.xml first (common in media feed), then directory listing fallbacks
-            candidates = [
-                url.rstrip("/") + "/election.xml",
-                url.rstrip("/") + "/parties.xml",
-                url.rstrip("/") + "/",
-            ]
-            last_err = None
-            body = None
-            used = None
-            for u in candidates:
-                try:
-                    req = urllib.request.Request(u, headers={"User-Agent": "NZ-Election-Sweepstakes/1.0 (private party; results read-only)"})
-                    with urllib.request.urlopen(req, timeout=20) as resp:
-                        if resp.status != 200:
-                            last_err = f"HTTP {resp.status} for {u}"
-                            continue
-                        body = resp.read()
-                        used = u
-                        break
-                except Exception as e:
-                    last_err = f"{u}: {e}"
-            if body is None:
+            if apply:
                 conn.execute(
-                    "UPDATE feed_status SET last_error=? WHERE id=1",
-                    (last_err or "no response",),
+                    "UPDATE feed_status SET last_attempt_at=?, enabled=? WHERE id=1",
+                    (D.iso_now(), 1 if enabled else 0),
                 )
                 conn.commit()
-                return {"ok": False, "reason": last_err}
+                if body is None and not enabled:
+                    return {"ok": False, "reason": "feed_disabled"}
+            else:
+                conn.execute(
+                    "UPDATE feed_status SET last_attempt_at=? WHERE id=1",
+                    (D.iso_now(),),
+                )
+                conn.commit()
 
-            parsed = parse_election_xml(body)
+            used = None
+            if body is None:
+                body, parties_body, used, err = fetch_feed(url)
+                if body is None:
+                    conn.execute("UPDATE feed_status SET last_error=? WHERE id=1", ((err or "no response")[:500],))
+                    conn.commit()
+                    return {"ok": False, "reason": err or "no response", "votes": {}, "seats": {}}
+
+            parsed = parse_election_xml(body, parties_body)
             if not parsed.get("ok"):
                 conn.execute(
                     "UPDATE feed_status SET last_error=? WHERE id=1",
-                    (parsed.get("error", "parse failed"),),
+                    ((parsed.get("error") or "parse failed")[:500],),
                 )
                 conn.commit()
+                parsed["votes"] = parsed.get("votes") or {}
+                parsed["seats"] = parsed.get("seats") or {}
                 return parsed
 
-            # Apply AUTO results only where question has no MANUAL override
+            if not apply:
+                return {
+                    "ok": True,
+                    "preview": True,
+                    "applied": False,
+                    "url": used,
+                    "votes": parsed.get("votes") or {},
+                    "seats": parsed.get("seats") or {},
+                    "values": parsed.get("values") or {},
+                    "reporting_pct": parsed.get("reporting_pct"),
+                }
+
             questions = {q["key"]: q for q in D.list_questions(conn)}
             results = D.get_results(conn)
             applied = []
-            for key, value in parsed.get("values", {}).items():
+            for key, value in (parsed.get("values") or {}).items():
+                if value is None or value == "":
+                    continue
                 q = questions.get(key)
                 if not q:
                     continue
-                qid = str(q["id"])
-                existing = results.get(qid)
+                existing = results.get(str(q["id"]))
                 if existing and existing.get("source") == "manual" and existing.get("value") not in (None, ""):
-                    continue  # admin override wins
+                    continue
                 conn.execute(
                     """INSERT INTO results(question_id, value, source, updated_at)
                        VALUES (?,?, 'auto', ?)
@@ -170,91 +224,148 @@ class FeedPoller:
                 (D.iso_now(), summary),
             )
             D.audit(conn, "feed", "auto_update", {"applied": applied, "url": used})
+            if applied and self.on_applied:
+                self.on_applied(conn)
             conn.commit()
-            self.broadcast("results")
-            return {"ok": True, "applied": applied, "url": used}
+            if applied:
+                self.broadcast("results")
+            return {
+                "ok": True,
+                "applied": applied,
+                "url": used,
+                "votes": parsed.get("votes") or {},
+                "seats": parsed.get("seats") or {},
+                "reporting_pct": parsed.get("reporting_pct"),
+            }
         finally:
             conn.close()
 
 
-def parse_election_xml(body: bytes) -> dict:
-    """Best-effort parser for EC election XML. Structure may vary; unverified for 2026."""
+def _norm(s: str) -> str:
+    return " ".join((s or "").lower().replace("ā", "a").replace("ī", "i").replace("ū", "u").split())
+
+
+def canonical_party(name: str) -> Optional[str]:
+    return CANONICAL.get(_norm(name))
+
+
+def parties_from_xml(body: bytes) -> dict[str, str]:
+    """Map p_no → canonical party name from a parties.xml document."""
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        return {}
+    out: dict[str, str] = {}
+    for el in root.iter():
+        if el.tag.split("}")[-1].lower() != "party":
+            continue
+        pno = el.attrib.get("p_no") or el.attrib.get("pno")
+        label = el.findtext("short_name") or el.findtext("party_name") or el.attrib.get("name") or ""
+        canon = canonical_party(label)
+        if pno and canon:
+            out[str(pno)] = canon
+    return out
+
+
+def fetch_feed(url: str) -> tuple[Optional[bytes], Optional[bytes], Optional[str], Optional[str]]:
+    """Return (election_xml, parties_xml, url_used, error)."""
+    base = (url or "").strip()
+    if base.endswith(".xml"):
+        candidates = [base]
+        parties_url = base.rsplit("/", 1)[0] + "/parties.xml"
+    else:
+        root = base.rstrip("/")
+        candidates = [root + "/election.xml", root + "/"]
+        parties_url = root + "/parties.xml"
+    last_err = None
+    body = None
+    used = None
+    for u in candidates:
+        try:
+            req = urllib.request.Request(u, headers={"User-Agent": "NZ-Election-Sweepstakes/1.0 (private party; results read-only)"})
+            with urllib.request.urlopen(req, timeout=20) as resp:
+                if getattr(resp, "status", 200) != 200:
+                    last_err = f"HTTP {resp.status} for {u}"
+                    continue
+                body = resp.read()
+                used = u
+                break
+        except Exception as e:
+            last_err = f"{u}: {e}"
+    parties = None
+    try:
+        req = urllib.request.Request(parties_url, headers={"User-Agent": "NZ-Election-Sweepstakes/1.0 (private party; results read-only)"})
+        with urllib.request.urlopen(req, timeout=20) as resp:
+            if getattr(resp, "status", 200) == 200:
+                parties = resp.read()
+    except Exception:
+        parties = None
+    return body, parties, used, last_err
+
+
+def parse_election_xml(body: bytes, parties_body: Optional[bytes] = None) -> dict:
+    """Parse EC election XML, including the 2023 archive election.xml shape."""
     try:
         root = ET.fromstring(body)
     except ET.ParseError as e:
-        # Maybe HTML directory listing
         text = body.decode("utf-8", errors="replace")[:200]
-        return {"ok": False, "error": f"not XML ({e}); head={text!r}"}
+        return {"ok": False, "error": f"not XML ({e}); head={text!r}", "votes": {}, "seats": {}}
 
-    values = {}
+    pno_map = dict(BUILTIN_PNO)
+    if parties_body:
+        pno_map.update(parties_from_xml(parties_body))
+
+    votes: dict[str, float] = {}
+    seats: dict[str, int] = {}
     reporting = None
 
-    # Collect any element that looks like party vote / seats
-    def norm(s: str) -> str:
-        return " ".join((s or "").lower().replace("ā", "a").replace("ī", "i").replace("ū", "u").split())
+    counted = root.find(".//percent_voting_places_counted")
+    if counted is not None and (counted.text or "").strip():
+        try:
+            reporting = float(counted.text.strip())
+        except ValueError:
+            pass
 
-    # Walk all elements; look for common attribute/tag patterns from past feeds
     for el in root.iter():
         tag = el.tag.split("}")[-1].lower()
+        if tag != "party":
+            if tag in ("votingplacescounted", "reporting"):
+                try:
+                    reporting = float((el.text or "").strip())
+                except ValueError:
+                    pass
+            continue
+        pno = el.attrib.get("p_no") or el.attrib.get("pno")
         attrs = {k.lower(): v for k, v in el.attrib.items()}
-        name = attrs.get("party") or attrs.get("name") or attrs.get("partyname") or el.findtext("Party") or el.findtext("Name")
+        name = (
+            (pno_map.get(str(pno)) if pno else None)
+            or canonical_party(attrs.get("party") or attrs.get("name") or attrs.get("partyname") or el.findtext("Party") or el.findtext("Name") or el.findtext("short_name") or "")
+        )
         if not name:
             continue
-        n = norm(name)
-        vote = attrs.get("partyvote") or attrs.get("vote") or attrs.get("percentage") or el.findtext("PartyVote") or el.findtext("Percentage")
-        seats = attrs.get("totalseats") or attrs.get("seats") or el.findtext("TotalSeats") or el.findtext("Seats")
-        if vote is not None and n in PARTY_VOTE_KEYS:
+        vote = el.findtext("percent_votes") or attrs.get("partyvote") or attrs.get("percentage") or el.findtext("Percentage") or el.findtext("PartyVote")
+        seat = el.findtext("total_seats") or attrs.get("totalseats") or attrs.get("seats") or el.findtext("TotalSeats") or el.findtext("Seats")
+        if vote is not None and str(vote).strip() != "":
             try:
-                values[PARTY_VOTE_KEYS[n]] = float(str(vote).replace("%", "").strip())
+                votes[name] = float(str(vote).replace("%", "").strip())
             except ValueError:
                 pass
-        if seats is not None and n in PARTY_SEAT_KEYS:
+        if seat is not None and str(seat).strip() != "":
             try:
-                values[PARTY_SEAT_KEYS[n]] = int(float(str(seats).strip()))
-            except ValueError:
-                pass
-
-        if tag in ("votingplacescounted", "reporting") or "reporting" in attrs:
-            try:
-                reporting = float(attrs.get("percent") or attrs.get("percentage") or (el.text or ""))
+                seats[name] = int(float(str(seat).strip()))
             except ValueError:
                 pass
 
-    # Derive most_seats and right_bloc if we have enough
-    seats_map = {}
-    votes_map = {}
-    for n, key in PARTY_SEAT_KEYS.items():
-        if key in values:
-            # reverse to party display name
-            pass
-    # Build from known keys
-    party_seats = {}
-    party_votes = {}
-    key_to_party = {
-        "nat_seats": "National", "lab_seats": "Labour",
-        "nat_vote": "National", "lab_vote": "Labour",
-        "nzf_vote": "NZ First", "act_vote": "ACT",
-        "grn_vote": "Green", "tpm_vote": "Te Pāti Māori",
-    }
-    for k, v in values.items():
-        party = key_to_party.get(k)
-        if not party:
-            continue
-        if k.endswith("_seats"):
-            party_seats[party] = int(v)
-        if k.endswith("_vote"):
-            party_votes[party] = float(v)
+    if not votes and not seats:
+        return {"ok": False, "error": "XML parsed but no recognised party vote or seat figures", "votes": {}, "seats": {}}
 
-    # We may only have National/Labour seats from mapping; still compute most seats among known
-    if party_seats:
-        from scoring import most_seats_winner
-        w = most_seats_winner(party_seats, party_votes)
-        if w:
-            values["most_seats"] = w
-    if all(k in values for k in ("nat_seats",)) and "act_seats" not in values:
-        # right_bloc needs ACT + NZF seats — leave pending unless present
-        pass
-
-    if not values:
-        return {"ok": False, "error": "XML parsed but no recognised party fields (feed format unverified for 2026)"}
-    return {"ok": True, "values": values, "reporting_pct": reporting}
+    from scoring import derive_from_party_table
+    derived = derive_from_party_table(votes, seats)
+    values: dict[str, Any] = {}
+    for key in ("nat_vote", "lab_vote", "grn_vote", "act_vote", "nzf_vote", "tpm_vote"):
+        if derived.get(key) is not None:
+            values[key] = derived[key]
+    for key in ("most_seats", "parties_in", "bloc_61", "minor_highest"):
+        if derived.get(key) is not None:
+            values[key] = derived[key]
+    return {"ok": True, "values": values, "votes": votes, "seats": seats, "reporting_pct": reporting}

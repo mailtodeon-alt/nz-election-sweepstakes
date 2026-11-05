@@ -14,7 +14,8 @@
 
 1. Read the current public URL from `PUBLIC_URL.txt`.
 2. Home: `/` · Join: `/join` · TV board: `/live` · Compare: `/compare` · Admin: `/admin`
-3. Demo copies of the same pages: `/demo/`, `/demo/live`, `/demo/admin`
+3. Public (not in the pot): sign-up `/open` · public board `/open/live` · each player still uses `/p/<token>`
+4. Demo copies of the same pages: `/demo/`, `/demo/live`, `/demo/admin`, `/demo/open`, `/demo/open/live`
 
 ## First-time setup (before the party)
 
@@ -40,6 +41,45 @@
 - **Default is OFF.** The 2026 feed 404s until counting starts; the exact field layout is not verified for 2026 in this build. Manual entry is fully sufficient.
 - If you enable it on the night and it parses cleanly, values arrive as `AUTO`. Your manual overrides still win.
 - Poll interval: 60–120s recommended (feed CDN cache ~30s).
+
+## Public players (not in the pot)
+
+Home and Join offer **Play for fun (not in the pot)**. Those people are stored with `pool=public`. They answer the same 10 questions, use the same scoring and tie-break, and lock at the same time. They never appear on `/live`, `/compare`, the pot prize panel, frozen/official snapshots, or the pot CSV.
+
+In **Admin → Public players**:
+
+- See each public player, whether they have submitted, and their score.
+- Rename or **Remove** (hides them and frees the name; the row stays in the database so nothing is deleted).
+- **Public sign-ups open** — default on. Off refuses new sign-ups with 403. The lock at 7:00pm also refuses sign-ups and edits.
+- **Cap** — default 200 active public players.
+- **Export public CSV** — public results only, no prize column. The pot **Export CSV** stays the six friends.
+
+Sign-ups are limited to 5 per IP per 10 minutes (in memory, one gunicorn worker). Names are 1–24 characters, unique ignoring case, and HTML-escaped before they are stored.
+
+On each boot the app adds a `players.pool` column if the live database does not have one, plus empty tables for side bets, score history, and the ticker. Existing rows default to `pot`. Tokens, names, tie-breaks, question text, and the 60 stored predictions are not rewritten. Settings that are already saved (including the feed interval) are not replaced. Running the migration again does not move a `public` player back into the pot.
+
+## Election night
+
+Reset the demo database and open `/demo/live` before guests arrive. Stage 1–4 fills the chart. The demo board also shows a sample side bet, ticker lines, and the group-vs-public panel. Open a demo personal link to send a reaction. None of that writes to the real six players.
+
+1. **Reactions.** On by default. Each phone can send one emoji a second; the TV receives a single burst, not one event per tap. Switch off under **Reactions and ticker** if the screen gets noisy.
+2. **Side bets.** Create the question with one option per line (Yes / No, or up to eight choices) and a point value. Players answer on their own page while the bet is open. **Set answer** closes it and scores it. Those points show on `/open/live` and in the side-bet list on `/live`. They are not added to pot places, the $100 / $20 prizes, **Freeze election-night snapshot**, or **Export CSV**.
+3. **Chart.** On the TV, press **Chart** (or open `/live?view=history`). Each save of results adds a point, labelled with % counted when you entered one. The public chart keeps the top 10 lines.
+4. **Ticker.** Players post from their ballot: 80 characters, one a minute. Public posts stay on the public board. **Feature on TV** copies one onto `/live`. **Hide** or **Delete** removes a line. The ticker switch clears the bar on both screens.
+5. **Group vs public.** Both boards show the average main-ballot score of people who have submitted. Someone with an empty ballot is left out. Side-bet points are not in this average.
+6. **Auto-refresh.** Leave **Enable auto poll** off until you have tried **Dry run / preview** and the parsed party votes and seats look right. Preview does not save. When you enable it, set the interval to **180** seconds (3 minutes) if the box still shows 90 from the original install. Anything you typed as manual stays, including when the feed is empty or not valid XML.
+
+## Weekend (Sunday through the official result)
+
+After **Freeze election-night snapshot**, the main TV board keeps that pot result. Further result edits and the feed show up under **Latest count**, which is labelled as not the pot result. It lists how many of each player's 10 calls are right, adjacent, or wrong, and the counted-% history.
+
+**Weekend mode** rotates the TV through Board, Latest count, Estimate, and Ranks. Leave it off during the night if you want the board to stay still.
+
+- **Estimate** is a special-vote sketch. Defaults are the 2023 shift from the ordinary count to the official result (603,257 special votes were outside that preliminary count; official shares are the archived 2023 `election.xml`). You can change the special-vote % and the per-party shifts. Seats use Sainte-Laguë for 120 seats. A party under 5% is included if you enter an electorate win. Overhang is noted, not hidden. Nothing here is written into results, prizes, or the pot CSV.
+- **Ranks** is place from the first saved count to now, with a biggest-mover line.
+- **Pin pot recap** / **Pin public recap** saves today's card. Open `/recap` or `/open/recap`, and download the PNG from the same page.
+- **Coalition** notes are whatever you type. The link must be `http` or `https`. The page updates live. It does not read the news by itself.
+- **Closest number** side bets (final turnout, and similar) use the same side-bet form with kind "Closest number wins" and an optional open-until time. The closest answer gets the points. Those points are on the public board and the bonus table. Pot players can enter a number; it does not move their pot place.
 
 ## Demo mode
 

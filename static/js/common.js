@@ -38,16 +38,33 @@ window.Sweep = (function () {
    * the page should fully reload state via its own load() — free Render instances sleep
    * after ~15 min idle and may drop the stream.
    */
+  function netBanner(text, show) {
+    let el = document.getElementById('netBanner');
+    if (!el) {
+      el = document.createElement('div');
+      el.id = 'netBanner';
+      el.className = 'net-banner';
+      el.setAttribute('role', 'status');
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.classList.toggle('show', !!show);
+  }
+  window.addEventListener('offline', () => netBanner('You are offline. We will retry when you are back.', true));
+  window.addEventListener('online', () => netBanner('Back online.', false));
   function subscribe(onEvent) {
     let es = null;
     let stopped = false;
     let retryMs = 1000;
+    let connectedOnce = false;
     function connect() {
       if (stopped) return;
       const url = apiUrl('/api/events');
       es = new EventSource(url);
       es.onmessage = (ev) => {
         retryMs = 1000;
+        if (!connectedOnce) connectedOnce = true;
+        netBanner('', false);
         try {
           const msg = JSON.parse(ev.data);
           onEvent(msg);
@@ -56,7 +73,7 @@ window.Sweep = (function () {
       es.onerror = () => {
         try { es.close(); } catch (e) {}
         if (stopped) return;
-        // Full resync after reconnect delay
+        netBanner('Reconnecting to live updates…', true);
         setTimeout(() => {
           onEvent({ event: 'reconnect' });
           connect();

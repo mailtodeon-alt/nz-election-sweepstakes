@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"/>
 <title>Your predictions</title>
 <meta name="theme-color" content="#070b14"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
@@ -16,7 +16,7 @@
 .choice-btn {
   flex: 1 1 calc(50% - 8px); min-width: 120px; min-height: 56px;
   background: #152038; border: 2px solid #2a4068; border-radius: 14px;
-  color: var(--text); font-weight: 800; font-size: 16px; padding: 12px 10px; cursor: pointer;
+  color: #eef3ff; font-weight: 800; font-size: 16px; padding: 12px 10px; cursor: pointer;
 }
 .choice-btn.selected { background: #1e4d8c; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(93,214,255,.25); }
 .choice-btn:disabled { opacity: 0.7; cursor: not-allowed; }
@@ -30,24 +30,24 @@
     <span class="pill demo hidden" id="demoPill">DEMO</span>
   </div>
   <h1 style="margin:6px 0 4px" id="hello">Your predictions</h1>
-  <p class="muted" id="sub">Tap a band for each question. Exact band = full points, adjacent band = partial. You can edit until lock.</p>
+  <p class="muted hidden" id="funNote">Playing for fun — this entry is not in the prize pot.</p>
+  <p class="muted" id="sub">One question at a time. Exact band is full points, the next band along is partial. Your picks save as you go. Lock is 7:00pm NZDT, Saturday 7 November.</p>
+  <div class="progress-wrap" id="progressWrap">
+    <div id="progressLabel">Question 1 of 10</div>
+    <div class="progress-track" id="progressBar" role="progressbar" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0"><div id="progressFill"></div></div>
+  </div>
+  <p id="saveState" class="save-state" role="status">Not saved yet</p>
   <div class="card">
-    <label>Your display name</label>
+    <label for="name">Your display name</label>
     <input id="name" maxlength="40" placeholder="e.g. Deon"/>
   </div>
-  
-  <div class="card" id="a2hs" style="border-color:#3a6a2a">
-    <h3 style="margin-top:0">Add to Home Screen</h3>
-    <p class="muted" style="margin:0 0 8px">Install this page so election night opens <strong>your</strong> ballot in one tap.</p>
-    <ul class="muted" style="margin:0;padding-left:18px;font-size:14px">
-      <li><strong>iPhone/iPad:</strong> tap Share &nbsp;▢↑&nbsp; then <em>Add to Home Screen</em>.</li>
-      <li><strong>Android Chrome:</strong> tap the install banner, or menu ⋮ → <em>Install app</em> / <em>Add to Home screen</em>.</li>
-    </ul>
-    <button class="secondary" id="a2hsInstall" style="margin-top:10px;display:none">Install app</button>
-    <p class="muted" style="font-size:12px;margin-top:8px">Note: if the host restarts the public link, re-open your personal URL once and re-add the icon.</p>
-  </div>
-
   <div id="questions"></div>
+  <nav class="step-nav" id="stepNav" aria-label="Move through the ballot">
+    <button type="button" class="secondary" id="stepBack">Back</button>
+    <button type="button" id="stepNext">Next</button>
+    <button type="button" class="secondary" id="stepReview">Review all</button>
+  </nav>
+  <p class="watch-link"><a id="watchLink" href="/live">Watch the board</a> · <a id="funBoardLink" href="/open/live">Public board</a></p>
   <div class="card tb-box">
     <h3 style="margin-top:0">Tie-breaker</h3>
     <p class="muted" style="margin-top:0">National's exact party vote % (one decimal). Closest wins if scores are tied. Does not add points.</p>
@@ -62,15 +62,40 @@
     <h3>Your score</h3>
     <div id="scoreBody"></div>
   </div>
+  <div class="card" id="a2hs" style="border-color:#3a6a2a">
+    <h3 style="margin-top:0">Add to Home Screen</h3>
+    <p class="muted" style="margin:0 0 8px">Install this page so election night opens <strong>your</strong> ballot in one tap.</p>
+    <ul class="muted" style="margin:0;padding-left:18px;font-size:14px">
+      <li><strong>iPhone/iPad:</strong> tap Share then <em>Add to Home Screen</em>.</li>
+      <li><strong>Android Chrome:</strong> menu, then <em>Install app</em> or <em>Add to Home screen</em>.</li>
+    </ul>
+    <button class="secondary" id="a2hsInstall" style="margin-top:10px;display:none" type="button">Install app</button>
+  </div>
+  <div class="card" id="reactCard">
+    <h3 style="margin-top:0">Send a reaction</h3>
+    <div class="emoji-row" id="emojiBar"></div>
+  </div>
+  <div class="card" id="sideCard">
+    <h3 style="margin-top:0">Side bets</h3>
+    <div id="sideBets" class="muted">None open.</div>
+  </div>
+  <div class="card" id="talkCard">
+    <h3 style="margin-top:0">Trash talk</h3>
+    <p class="muted" style="margin-top:0">80 characters, one a minute. Public lines stay on the public board unless the host features them on TV.</p>
+    <label for="talk" class="muted">Message</label>
+    <input id="talk" maxlength="80" placeholder="Keep it short"/>
+    <button id="talkSend" class="secondary" style="margin-top:8px" type="button">Post</button>
+  </div>
 </div>
 <script src="/static/js/common.js"></script>
+<script src="/static/js/night.js"></script>
 <script>
 const token = location.pathname.split('/').filter(Boolean).pop();
 
 // PWA: player-specific manifest so home-screen icon opens this ballot
 (function(){
   const link = document.getElementById('manifestLink');
-  if (link) link.href = '/api/player/' + token + '/manifest.webmanifest';
+  if (link) link.href = '/api/player/' + encodeURIComponent(token) + '/manifest.webmanifest' + (Sweep.isDemo ? '?demo=1' : '');
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
   let deferred = null;
   window.addEventListener('beforeinstallprompt', (e) => {
@@ -81,12 +106,28 @@ const token = location.pathname.split('/').filter(Boolean).pop();
 })();
 
 let state = null;
+let step = 0;
+let reviewing = false;
 const answers = {}; // qid -> value
+let saveTimer = null;
+
+function unescapeHtml(s) {
+  const t = document.createElement('textarea');
+  t.innerHTML = s || '';
+  return t.value;
+}
 
 function render() {
   if (!state) return;
-  document.getElementById('hello').textContent = state.player.name + "'s ballot";
-  document.getElementById('name').value = state.player.name;
+  const publicPlayer = state.player.pool === 'public';
+  const displayName = publicPlayer ? unescapeHtml(state.player.name) : state.player.name;
+  document.getElementById('hello').textContent = displayName + "'s ballot";
+  document.getElementById('name').value = displayName;
+  document.getElementById('name').maxLength = publicPlayer ? 24 : 40;
+  document.getElementById('funNote').classList.toggle('hidden', !publicPlayer);
+  renderSideBets();
+  document.getElementById('reactCard').classList.toggle('hidden', state.settings.reactions_enabled === '0');
+  document.getElementById('talkCard').classList.toggle('hidden', state.settings.ticker_enabled === '0');
   document.getElementById('tb').value = state.player.tb_national_vote || '';
   document.getElementById('tb').disabled = !!state.locked;
   const pill = document.getElementById('statusPill');
@@ -98,36 +139,74 @@ function render() {
   document.getElementById('save').disabled = !!state.locked;
   document.getElementById('name').disabled = !!state.locked;
 
-  const box = document.getElementById('questions');
-  box.innerHTML = '';
-  state.questions.forEach(q => {
+  const qs = state.questions;
+  qs.forEach(q => {
     const qid = String(q.id);
     if (answers[qid] === undefined) answers[qid] = state.predictions[qid] ?? '';
+  });
+  const answered = qs.filter(q => answers[String(q.id)]).length;
+  const label = document.getElementById('progressLabel');
+  const fill = document.getElementById('progressFill');
+  const bar = document.getElementById('progressBar');
+  label.textContent = state.locked ? 'Locked. Here is what you picked.' : (reviewing ? 'Review your picks' : ('Question ' + (step + 1) + ' of ' + qs.length));
+  fill.style.width = (qs.length ? (answered / qs.length) * 100 : 0) + '%';
+  bar.setAttribute('aria-valuenow', String(answered));
+  bar.setAttribute('aria-valuemax', String(qs.length));
+  document.getElementById('stepNav').classList.toggle('hidden', !!state.locked);
+  document.getElementById('stepBack').disabled = !reviewing && step === 0;
+  document.getElementById('watchLink').href = Sweep.isDemo ? '/demo/live' : '/live';
+  document.getElementById('funBoardLink').href = Sweep.isDemo ? '/demo/open/live' : '/open/live';
+
+  const box = document.getElementById('questions');
+  box.innerHTML = '';
+  const showAll = state.locked || reviewing;
+  const list = showAll ? qs : qs.slice(step, step + 1);
+  list.forEach(q => {
+    const qid = String(q.id);
     const div = document.createElement('div');
     div.className = 'card q';
     let scoreHtml = '';
     if (state.locked && state.score) {
-      const d = state.score.detail.find(x => x.question_id === qid);
+      const d = state.score.detail.find(x => String(x.question_id) === qid);
       if (d) {
         scoreHtml = d.status === 'pending'
-          ? `<span class="score-chip">PENDING</span>`
+          ? `<span class="score-chip">Waiting on the count</span>`
           : `<span class="score-chip">${d.points}/${d.max}</span>`;
       }
     }
     const choices = (q.meta && q.meta.choices) || [];
-    const btns = choices.map(c => {
-      const sel = answers[qid] === c ? 'selected' : '';
-      return `<button type="button" class="choice-btn ${sel}" data-qid="${qid}" data-val="${c.replace(/"/g,'&quot;')}" ${state.locked?'disabled':''}>${c}</button>`;
-    }).join('');
-    div.innerHTML = `<div class="label">${q.sort_order}. ${q.label} <span class="muted">(${q.max_points} pts)</span> ${scoreHtml}</div>
-      <div class="choice-grid">${btns}</div>`;
+    const grid = document.createElement('div');
+    grid.className = 'choice-grid';
+    grid.setAttribute('role', 'group');
+    grid.setAttribute('aria-label', q.label);
+    choices.forEach(c => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'choice-btn' + (answers[qid] === c ? ' selected' : '');
+      btn.textContent = c;
+      btn.setAttribute('aria-pressed', answers[qid] === c ? 'true' : 'false');
+      btn.disabled = !!state.locked;
+      btn.onclick = () => {
+        answers[qid] = c;
+        autosave();
+        if (!reviewing && step < qs.length - 1) step += 1;
+        render();
+      };
+      grid.appendChild(btn);
+    });
+    const head = document.createElement('div');
+    head.className = 'label';
+    head.innerHTML = `${q.sort_order}. ${q.label} <span class="muted">(${q.max_points} pts)</span> ${scoreHtml}`;
+    div.append(head, grid);
+    if (showAll && !state.locked) {
+      const edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'secondary';
+      edit.textContent = 'Edit this one';
+      edit.onclick = () => { reviewing = false; step = qs.indexOf(q); render(); };
+      div.appendChild(edit);
+    }
     box.appendChild(div);
-  });
-  box.querySelectorAll('.choice-btn').forEach(btn => {
-    btn.onclick = () => {
-      answers[btn.dataset.qid] = btn.dataset.val;
-      render();
-    };
   });
 
   if (state.locked && state.score) {
@@ -147,25 +226,129 @@ async function load() {
   });
   render();
 }
+async function persist() {
+  await Sweep.api('/api/player/' + token + '/predictions', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: document.getElementById('name').value,
+      predictions: answers,
+      tb_national_vote: document.getElementById('tb').value
+    })
+  });
+}
+function autosave() {
+  if (!state || state.locked) return;
+  const note = document.getElementById('saveState');
+  note.textContent = 'Saving…';
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    try {
+      await persist();
+      note.textContent = 'Saved';
+    } catch (e) {
+      note.textContent = 'Not saved. Check your connection and try again.';
+      Sweep.toast(e.data?.message || e.message);
+    }
+  }, 400);
+}
+document.getElementById('stepBack').onclick = () => {
+  reviewing = false;
+  step = Math.max(0, step - 1);
+  render();
+};
+document.getElementById('stepNext').onclick = () => {
+  if (step < state.questions.length - 1) { step += 1; reviewing = false; }
+  else { reviewing = true; }
+  render();
+};
+document.getElementById('stepReview').onclick = () => { reviewing = true; render(); };
 document.getElementById('save').onclick = async () => {
   try {
-    await Sweep.api('/api/player/' + token + '/predictions', {
-      method: 'POST',
-      body: JSON.stringify({
-        name: document.getElementById('name').value,
-        predictions: answers,
-        tb_national_vote: document.getElementById('tb').value
-      })
-    });
+    await persist();
     Sweep.toast('Saved');
     document.getElementById('saveMsg').textContent = 'Saved at ' + new Date().toLocaleTimeString();
+    document.getElementById('saveState').textContent = 'Saved';
     await load();
   } catch (e) {
     Sweep.toast(e.data?.message || e.message);
   }
 };
+document.getElementById('tb').addEventListener('change', autosave);
+document.getElementById('name').addEventListener('change', autosave);
+function renderSideBets() {
+  const box = document.getElementById('sideBets');
+  const bets = state.side_bets || [];
+  if (!bets.length) { box.textContent = 'None tonight.'; return; }
+  box.innerHTML = '';
+  bets.forEach(b => {
+    const wrap = document.createElement('div');
+    wrap.style.marginBottom = '10px';
+    const title = document.createElement('div');
+    title.style.fontWeight = '700';
+    title.textContent = Night.unescapeHtml(b.prompt) + ' · ' + b.points + ' pts · ' + b.status;
+    wrap.appendChild(title);
+    if (b.answer) {
+      const ans = document.createElement('div');
+      ans.className = 'muted';
+      ans.textContent = 'Answer: ' + b.answer;
+      wrap.appendChild(ans);
+    }
+    const row = document.createElement('div');
+    row.className = 'emoji-row';
+    row.style.marginTop = '6px';
+    if (b.kind === 'closest') {
+      const input = document.createElement('input');
+      input.type = 'number';
+      input.step = '0.1';
+      input.placeholder = 'Your number';
+      input.value = b.pick || '';
+      input.disabled = b.status !== 'open';
+      const save = document.createElement('button');
+      save.type = 'button';
+      save.textContent = 'Save number';
+      save.disabled = b.status !== 'open';
+      save.onclick = async () => {
+        try {
+          await Sweep.api('/api/player/' + token + '/side-bets', { method: 'POST', body: JSON.stringify({ side_bet_id: b.id, value: input.value }) });
+          Sweep.toast('Saved');
+          await load();
+        } catch (e) { Sweep.toast(e.data?.message || e.message); }
+      };
+      row.append(input, save);
+      wrap.appendChild(row);
+      box.appendChild(wrap);
+      return;
+    }
+    (b.choices || []).forEach(choice => {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'secondary';
+      btn.textContent = choice;
+      if (b.pick === choice) btn.style.borderColor = 'var(--accent)';
+      btn.disabled = b.status !== 'open';
+      btn.onclick = async () => {
+        try {
+          await Sweep.api('/api/player/' + token + '/side-bets', { method: 'POST', body: JSON.stringify({ side_bet_id: b.id, value: choice }) });
+          Sweep.toast('Side bet saved');
+          await load();
+        } catch (e) { Sweep.toast(e.data?.message || e.message); }
+      };
+      row.appendChild(btn);
+    });
+    wrap.appendChild(row);
+    box.appendChild(wrap);
+  });
+}
+Night.emojiBar(document.getElementById('emojiBar'), token);
+document.getElementById('talkSend').onclick = async () => {
+  try {
+    await Sweep.api('/api/player/' + token + '/ticker', { method: 'POST', body: JSON.stringify({ text: document.getElementById('talk').value }) });
+    document.getElementById('talk').value = '';
+    Sweep.toast('Posted');
+  } catch (e) { Sweep.toast(e.data?.message || e.message); }
+};
 load();
-Sweep.subscribe(() => load());
+Sweep.subscribe((msg) => { if (msg.event === 'heartbeat' || msg.event === 'reactions') return; load(); });
 setInterval(() => { if (state && !state.locked) {
   document.getElementById('statusPill').textContent = 'OPEN · closes ' + Sweep.fmtCountdown(state.lock_at);
 }}, 1000);

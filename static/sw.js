@@ -1,10 +1,12 @@
-const CACHE = 'sweep-shell-v1';
+const CACHE = 'sweep-shell-v3';
 const SHELL = [
   '/',
   '/join',
   '/live',
   '/compare',
   '/admin',
+  '/open',
+  '/open/live',
   '/static/css/app.css',
   '/static/js/common.js',
   '/static/icons/icon-192.png',

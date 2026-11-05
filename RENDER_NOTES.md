@@ -19,6 +19,10 @@ Personal/social app. Public internet, **no** Easy Auth / Entra. Access control =
 
 Dashboard → web service → Environment → edit `ADMIN_PASSWORD` → Save (redeploy/restart). Old sessions become invalid after restart when the cookie signer / login check uses the new password (login only; sessions stay until cookie expires — force logout by changing `SECRET_KEY` too if needed).
 
+## Public players migration
+
+The first boot after this change adds `players.pool` (`TEXT NOT NULL DEFAULT 'pot'`) on Postgres and on local SQLite. Existing pot rows, tokens, and predictions are left in place. Public sign-ups use the same database and a separate leaderboard (`/open`, `/open/live`). The migration is idempotent and does not reset `pool` on later restarts.
+
 ## Demo mode
 
 `/demo/live` and admin **Demo** controls use an isolated Postgres schema `demo` (or `demo.db` locally). Reset anytime; never mixes with real results. Orange DEMO frame on the TV board.

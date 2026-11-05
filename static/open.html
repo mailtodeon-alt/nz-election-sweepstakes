@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Play for fun · NZ Election Sweepstakes</title>
+<meta name="theme-color" content="#070b14"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Sweepstakes"/>
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png"/>
+<link rel="manifest" href="/manifest.webmanifest"/>
+<link rel="stylesheet" href="/static/css/app.css"/>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <span class="pill" id="demoPill" style="display:none">DEMO MODE</span>
+    <h1>Play for fun</h1>
+    <p>Same 10 questions, same lock, your own leaderboard. This is <strong>not</strong> in the prize pot.</p>
+  </div>
+
+  <div class="card hidden" id="continueCard">
+    <h3 style="margin-top:0">Welcome back</h3>
+    <p>Continue as <strong id="continueName"></strong></p>
+    <div class="row">
+      <a class="btn" id="continueLink" href="#">Open my ballot</a>
+      <button class="secondary" id="dismissContinue" type="button">This isn't me</button>
+    </div>
+  </div>
+
+  <div class="card" id="formCard">
+    <h3 style="margin-top:0">Get your personal link</h3>
+    <p class="muted">Pick a display name (1–24 characters). We'll give you a private link — save it. That link is how you get back to your ballot.</p>
+    <form id="signupForm">
+      <label for="name">Display name</label>
+      <input id="name" name="name" maxlength="24" autocomplete="nickname" required placeholder="e.g. Sam"/>
+      <button id="go" type="submit" style="margin-top:12px;width:100%">Get my link</button>
+    </form>
+    <p class="muted" id="err" style="min-height:1.2em"></p>
+  </div>
+
+  <div class="card hidden" id="issuedCard">
+    <h3 style="margin-top:0">Save this link</h3>
+    <p>This is the only way back to your ballot. Add it to your home screen from the next page (Share → Add to Home Screen on iPhone, or Install app on Android).</p>
+    <div class="link-box" id="issuedUrl"></div>
+    <div class="row" style="margin-top:12px">
+      <button id="copy" type="button">Copy link</button>
+      <a class="btn" id="enter" href="#">Open my ballot</a>
+    </div>
+    <p class="muted" id="redir">Opening your ballot shortly. Copy the link first if you need to keep it.</p>
+  </div>
+
+  <p style="text-align:center"><a href="/" id="homeLink">← Home</a> · <a href="/open/live" id="boardLink">Public leaderboard</a></p>
+</div>
+<script src="/static/js/common.js"></script>
+<script>
+const KEY = Sweep.isDemo ? 'sweep_public_entry_demo' : 'sweep_public_entry';
+if (Sweep.isDemo) {
+  document.getElementById('demoPill').style.display = 'inline-block';
+  document.getElementById('demoPill').classList.add('demo');
+  document.getElementById('homeLink').href = '/demo/';
+  document.getElementById('boardLink').href = '/demo/open/live';
+}
+
+function unescapeHtml(s) {
+  const t = document.createElement('textarea');
+  t.innerHTML = s || '';
+  return t.value;
+}
+
+function showContinue() {
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) { saved = null; }
+  if (!saved || !saved.path || !saved.name) return;
+  document.getElementById('continueName').textContent = saved.name;
+  document.getElementById('continueLink').href = saved.path;
+  document.getElementById('continueCard').classList.remove('hidden');
+}
+document.getElementById('dismissContinue').onclick = () => {
+  try { localStorage.removeItem(KEY); } catch (e) {}
+  document.getElementById('continueCard').classList.add('hidden');
+};
+showContinue();
+Sweep.api('/api/open/state').then(s => {
+  const closed = s.locked || s.settings.public_signups_open === '0';
+  if (!closed) return;
+  document.getElementById('err').textContent = s.locked
+    ? 'Entries are locked. Sign-ups are closed.'
+    : 'Public sign-ups are closed.';
+  document.getElementById('go').disabled = true;
+  document.getElementById('name').disabled = true;
+}).catch(() => {});
+
+let redirectTimer = null;
+document.getElementById('signupForm').onsubmit = async (ev) => {
+  ev.preventDefault();
+  const err = document.getElementById('err');
+  const btn = document.getElementById('go');
+  err.textContent = '';
+  btn.disabled = true;
+  try {
+    const res = await Sweep.api('/api/open/signup', {
+      method: 'POST',
+      body: JSON.stringify({ name: document.getElementById('name').value })
+    });
+    const path = res.player.link;
+    const full = location.origin + path;
+    const display = unescapeHtml(res.player.name);
+    try {
+      localStorage.setItem(KEY, JSON.stringify({ name: display, token: res.player.token, path: path }));
+    } catch (e) {}
+    document.getElementById('issuedUrl').textContent = full;
+    document.getElementById('enter').href = path;
+    document.getElementById('formCard').classList.add('hidden');
+    document.getElementById('issuedCard').classList.remove('hidden');
+    document.getElementById('copy').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(full);
+        Sweep.toast('Link copied');
+      } catch (e) {
+        Sweep.toast('Select the link and copy it');
+      }
+    };
+    let left = 8;
+    const redir = document.getElementById('redir');
+    redir.textContent = 'Opening your ballot in ' + left + 's. Save this link first if you need to.';
+    redirectTimer = setInterval(() => {
+      left -= 1;
+      if (left <= 0) {
+        clearInterval(redirectTimer);
+        location.href = path;
+      } else {
+        redir.textContent = 'Opening your ballot in ' + left + 's. Save this link first if you need to.';
+      }
+    }, 1000);
+  } catch (e) {
+    err.textContent = (e.data && (e.data.message || e.data.error)) || e.message;
+    btn.disabled = false;
+  }
+};
+</script>
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+</script>
+</body></html>
