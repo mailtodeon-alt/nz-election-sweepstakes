@@ -92,7 +92,7 @@ window.Sweep = (function () {
     if (n.includes('labour')) return '#D82A20';
     if (n.includes('green')) return '#098137';
     if (n.includes('act')) return '#F5C518';
-    if (n.includes('first')) return '#1a1a1a';
+    if (n.includes('first')) return '#6b7280';
     if (n.includes('māori') || n.includes('maori') || n.includes('pati')) return '#B2001D';
     return '#5dd6ff';
   }

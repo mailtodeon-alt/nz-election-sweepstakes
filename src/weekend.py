@@ -170,7 +170,7 @@ _SEAT_RGB = {
     "Green": (9, 129, 55),
     "Te Pāti Māori": (178, 0, 29),
     "Labour": (216, 42, 32),
-    "NZ First": (26, 26, 26),
+    "NZ First": (107, 114, 128),
     "National": (0, 82, 159),
     "ACT": (245, 197, 24),
     "TOP": (50, 181, 232),
@@ -197,9 +197,8 @@ def _draw_recap_seats(draw: ImageDraw.ImageDraw, payload: dict, top: int) -> Non
         y = cy - rad * math.sin(ang) * 0.72
         color = _SEAT_RGB.get(party, (143, 163, 200))
         r = 7
-        if party == "NZ First":
-            draw.ellipse((x - r - 2, y - r - 2, x + r + 2, y + r + 2), fill=(228, 228, 228))
-        draw.ellipse((x - r, y - r, x + r, y + r), fill=color)
+        outline = (255, 255, 255) if party == "NZ First" else None
+        draw.ellipse((x - r, y - r, x + r, y + r), fill=color, outline=outline)
 
 
 def render_recap_png(payload: dict) -> bytes:

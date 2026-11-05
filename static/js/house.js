@@ -5,7 +5,7 @@ window.House = (function () {
     Labour: '#D82A20',
     Green: '#098137',
     ACT: '#F5C518',
-    'NZ First': '#1a1a1a',
+    'NZ First': '#6b7280',
     'Te Pāti Māori': '#B2001D',
     TOP: '#32b5e8',
   };
@@ -97,14 +97,10 @@ window.House = (function () {
       c.setAttribute('r', r);
       c.setAttribute('fill', party ? (COLORS[party] || '#8fa3c8') : '#2a3548');
       if (party === 'NZ First') {
-        const rim = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-        rim.setAttribute('cx', pt.x.toFixed(2));
-        rim.setAttribute('cy', pt.y.toFixed(2));
-        rim.setAttribute('r', (r + 0.45).toFixed(2));
-        rim.setAttribute('fill', '#e4e4e4');
-        svg.appendChild(rim);
-        c.setAttribute('fill', '#1a1a1a');
-        c.setAttribute('r', r.toFixed(2));
+        c.setAttribute('fill', '#6b7280');
+        c.setAttribute('stroke', '#ffffff');
+        c.setAttribute('stroke-width', '1');
+        c.setAttribute('vector-effect', 'non-scaling-stroke');
       }
       svg.appendChild(c);
     });
@@ -121,8 +117,8 @@ window.House = (function () {
       const swatch = document.createElement('i');
       swatch.style.background = COLORS[party] || '#8fa3c8';
       if (party === 'NZ First') {
-        swatch.style.background = '#1a1a1a';
-        swatch.style.boxShadow = '0 0 0 1px #e6e6e6';
+        swatch.style.background = '#6b7280';
+        swatch.style.boxShadow = '0 0 0 1px #ffffff';
       }
       span.append(swatch, document.createTextNode(party + ' ' + n));
       box.appendChild(span);
