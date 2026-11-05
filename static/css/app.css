@@ -50,8 +50,8 @@ input, select, textarea {
 }
 input::placeholder, textarea::placeholder { color: var(--placeholder); opacity: 1; }
 label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-.wrap { max-width: 720px; margin: 0 auto; padding: 20px 16px 60px; }
-.wrap.wide { max-width: 1120px; }
+.wrap { width: min(760px, 100%); max-width: 100%; margin: 0 auto; padding: 20px 16px 60px; }
+.wrap.wide { width: min(1120px, 100%); max-width: 100%; }
 .card {
   background: linear-gradient(180deg, var(--panel), var(--bg2));
   border: 1px solid #22345c; border-radius: var(--radius); padding: 16px 18px; margin-bottom: 14px;
@@ -348,22 +348,28 @@ th { color: var(--muted); font-weight: 600; }
 .tv.view-latest .board, .tv.view-estimate .board, .tv.view-ranks .board { display: none; }
 .tv.view-latest #view-latest, .tv.view-estimate #view-estimate, .tv.view-ranks #view-ranks { display: block; }
 .recap-card {
-  width: min(1080px, 100%); aspect-ratio: 1080 / 1350; margin: 16px auto; padding: 48px;
+  width: 100%; max-width: 100%; margin: 16px auto; padding: 28px 22px;
   background: #070b14; color: #eef3ff; border: 1px solid #243860; border-radius: 18px;
 }
 .recap-card h1 { font-size: clamp(2rem, 6vw, 4.2rem); color: #ffd166; margin: 12px 0; }
 .recap-card p, .recap-card #top { color: #eef3ff; }
 .recap-card .muted { color: #c5d4ee; }
 .recap-empty { font-size: clamp(1.35rem, 4vw, 2.4rem); font-weight: 800; line-height: 1.35; color: #eef3ff; margin: 12px 0 0; }
+.coal-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.coal-bloc > span { display: block; margin-top: 6px; font-weight: 800; }
+.coal-track { position: relative; height: 12px; margin: 10px 0 6px; background: #152033; border-radius: 99px; }
+.coal-track span { display: block; height: 100%; background: #5dd6ff; border-radius: 99px; }
+.coal-track i { position: absolute; top: -4px; width: 2px; height: 20px; background: #ffd166; }
 .identity-banner { border-color: #5dd6ff; }
 .identity-banner p { margin: 0 0 10px; font-weight: 800; }
 
 .site-header {
   position: sticky; top: 0; z-index: 40; display: flex; align-items: center; justify-content: space-between;
   gap: 12px; min-height: 56px; padding: 8px 14px;
-  background: color-mix(in srgb, var(--bg) 92%, transparent); color: var(--text);
-  border-bottom: 1px solid var(--line); backdrop-filter: blur(8px);
+  background: var(--bg); color: var(--text);
+  border-bottom: 1px solid var(--line);
 }
+.nav-drawer[hidden], .nav-overlay[hidden] { display: none !important; }
 .site-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 800; color: var(--text); font-size: 1.05rem; letter-spacing: -0.02em; }
 .brand-mark {
   display: inline-flex; align-items: center; justify-content: center;
@@ -416,7 +422,7 @@ body:has(.tv) .burger-icon::after { background: #eef3ff; width: 22px; height: 3p
 .launcher { display: grid; gap: 12px; }
 .home-grid { display: grid; gap: 16px; }
 @media (min-width: 1100px) {
-  .wrap.wide { max-width: 1280px; }
+  .wrap.wide { width: min(1200px, 100%); max-width: 100%; }
   .home-grid { grid-template-columns: 1.15fr 0.85fr; align-items: start; }
   .news-list { grid-template-columns: 1fr 1fr; }
   #electorateList { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }

@@ -141,10 +141,16 @@ def recent_ticks(conn: D.Conn, limit: int = 12) -> list[dict]:
 
 def recap_from_state(pool: str, ranked: list[dict], mover: dict | None, when: str) -> dict:
     ordered = sorted(ranked, key=lambda row: (row.get("place") or row.get("rank") or 99, row.get("name") or ""))
+    places = [row.get("place") or row.get("rank") for row in ordered]
+    shared = {place for place in places if places.count(place) > 1}
     top = []
-    for row in ordered[:3]:
+    for row in ordered:
+        place = row.get("place") or row.get("rank")
+        tied = place in shared
         top.append({
-            "place": row.get("place") or row.get("rank"),
+            "place": place,
+            "place_label": f"={place}" if tied else str(place),
+            "tied": tied,
             "name": row.get("name"),
             "total": row.get("total"),
         })
@@ -224,7 +230,12 @@ def render_recap_png(payload: dict) -> bytes:
                 line = trial
         if line:
             draw.text((64, y), line, font=body_font, fill="#eef3ff")
-        _draw_recap_seats(draw, payload, y + 80)
+            y += 80
+        parliament = payload.get("parliament") or {}
+        if parliament.get("label"):
+            draw.text((64, y), str(parliament.get("label")), font=small_font, fill="#eef3ff")
+            y += 36
+        _draw_recap_seats(draw, payload, y)
         draw.text((64, 1288), "Not the prize-pot result", font=small_font, fill="#b7c6e4")
         buf = io.BytesIO()
         image.save(buf, format="PNG")
@@ -233,11 +244,14 @@ def render_recap_png(payload: dict) -> bytes:
     draw.text((64, 160), str(payload.get("leader") or "—"), font=big_font, fill="#ffd166")
     total = payload.get("leader_total")
     draw.text((64, 280), f"{total if total is not None else '—'} pts", font=body_font, fill="#eef3ff")
-    y = 380
-    for row in payload.get("top") or []:
-        draw.text((64, y), f"{row.get('place')}. {row.get('name')}   {row.get('total')}", font=body_font, fill="#eef3ff")
-        y += 64
-    y += 24
+    rows = payload.get("top") or []
+    step = 40 if len(rows) > 4 else 56
+    y = 360
+    for row in rows:
+        label = row.get("place_label") or row.get("place")
+        draw.text((64, y), f"{label}   {row.get('name')}   {row.get('total')}", font=body_font, fill="#eef3ff")
+        y += step
+    y += 16
     draw.text((64, y), f"Best call: {payload.get('best_call') or '—'}", font=body_font, fill="#3ddc97")
     y += 56
     draw.text((64, y), f"Worst call: {payload.get('worst_call') or '—'}", font=body_font, fill="#ff5d7a")
@@ -248,7 +262,12 @@ def render_recap_png(payload: dict) -> bytes:
     else:
         line = "Biggest mover: —"
     draw.text((64, y), line, font=body_font, fill="#5dd6ff")
-    _draw_recap_seats(draw, payload, y + 80)
+    y += 64
+    parliament = payload.get("parliament") or {}
+    if parliament.get("label"):
+        draw.text((64, y), str(parliament.get("label")), font=small_font, fill="#eef3ff")
+        y += 36
+    _draw_recap_seats(draw, payload, y)
     draw.text((64, 1240), str(payload.get("at") or ""), font=small_font, fill="#8fa3c8")
     draw.text((64, 1288), "Not the prize-pot result", font=small_font, fill="#8fa3c8")
     buf = io.BytesIO()

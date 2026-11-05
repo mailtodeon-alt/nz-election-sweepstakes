@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="/static/css/app.css"/>
 </head>
 <body>
-<div class="wrap" style="max-width:1100px">
+<div class="wrap">
   <p><a id="homeLink" href="/">← Board</a> · <a id="pngLink" href="/recap.png">Download PNG</a></p>
   <div id="houseMount"></div>
   <article class="recap-card" id="card">
@@ -33,8 +33,16 @@ if (Sweep.isDemo) {
   document.getElementById('homeLink').href = '/open/live';
   document.getElementById('pngLink').href = '/open/recap.png';
 }
-Sweep.api('/api/state').then((s) => House.mount(document.getElementById('houseMount'), s.house, { compact: true })).catch(() => {});
-Sweep.api('/api/recap?pool=' + pool).then(card => {
+function mountHouse(view) {
+  if (!view) return;
+  House.mount(document.getElementById('houseMount'), {
+    has_results: !!view.projected,
+    current: view,
+    live: view.projected ? view : null,
+  }, { compact: true });
+}
+function paint(card) {
+  mountHouse(card.parliament);
   const leader = document.getElementById('leader');
   const bits = ['total', 'top', 'best', 'worst', 'mover', 'when'];
   if (card.awaiting) {
@@ -44,7 +52,7 @@ Sweep.api('/api/recap?pool=' + pool).then(card => {
     bits.forEach((id) => {
       const el = document.getElementById(id);
       el.hidden = true;
-      el.textContent = '';
+      el.replaceChildren();
     });
     let msg = document.getElementById('recapEmpty');
     if (!msg) {
@@ -64,13 +72,23 @@ Sweep.api('/api/recap?pool=' + pool).then(card => {
   document.getElementById('kicker').textContent = card.title || 'Recap';
   leader.textContent = card.leader || '—';
   document.getElementById('total').textContent = (card.leader_total == null ? '—' : card.leader_total) + ' pts';
-  document.getElementById('top').innerHTML = (card.top || []).map(row =>
-    '<div>' + row.place + '. ' + row.name + ' · ' + row.total + '</div>').join('');
+  const top = document.getElementById('top');
+  top.replaceChildren();
+  (card.top || []).forEach((row) => {
+    const line = document.createElement('div');
+    line.textContent = (row.place_label || row.place) + '  ' + (row.name || '') + ' · ' + row.total;
+    top.appendChild(line);
+  });
   document.getElementById('best').textContent = 'Best call: ' + (card.best_call || '—');
   document.getElementById('worst').textContent = 'Worst call: ' + (card.worst_call || '—');
   const m = card.biggest_mover;
   document.getElementById('mover').textContent = m ? ('Biggest mover: ' + m.name + ' ' + m.from_place + ' → ' + m.to_place) : 'Biggest mover: —';
   document.getElementById('when').textContent = Sweep.formatWhen(card.at) || '';
-});
+}
+function load() {
+  Sweep.api('/api/recap?pool=' + pool).then(paint).catch(() => {});
+}
+load();
+Sweep.subscribe((msg) => { if (msg.event !== 'heartbeat' && msg.event !== 'reactions') load(); });
 </script>
 </body></html>

@@ -173,6 +173,41 @@ def test_pages():
     assert recap["message"] == "No results yet, recap fills in once counting starts"
     assert not recap.get("leader")
     assert not recap.get("top")
+    assert recap["parliament"]["label"] == "Current Parliament (2023 election)"
+    assert recap["parliament"]["projected"] is False
+    page = expect(CLIENT.get("/coalition"), 200)
+    assert "Nothing here is scraped" not in page
+    coal = expect(CLIENT.get("/api/coalition"), 200)
+    assert coal["house"] == 123
+    assert coal["majority"] == 62
+    assert coal["source"] == "current"
+    right = next(b for b in coal["blocs"] if b["names"] == ["National", "ACT", "NZ First"])
+    assert right["seats"] == 68 and right["majority"] is True
+    short = next(b for b in coal["blocs"] if b["names"] == ["National", "ACT"])
+    assert short["seats"] == 60 and short["short"] == 2
+    conn = D.connect(False)
+    try:
+        D.set_setting(conn, "news_json", json.dumps([
+            {"title": "Coalition talks begin", "summary": "A deal is on the table", "url": "https://example.com/a", "source": "RNZ", "published": "2026-11-06T10:00:00+13:00"},
+            {"title": "Fine weather on election day", "summary": "Sunny spells", "url": "https://example.com/b", "source": "MetService", "published": "2026-11-06T12:00:00+13:00"},
+        ]))
+        conn.commit()
+    finally:
+        conn.close()
+    headed = expect(CLIENT.get("/api/coalition"), 200)["news"]
+    assert [item["title"] for item in headed] == ["Coalition talks begin"]
+    conn = D.connect(False)
+    try:
+        D.set_setting(conn, "news_json", "[]")
+        conn.commit()
+    finally:
+        conn.close()
+    official = S._parliament_view(
+        {"has_results": True, "live": {"label": "old", "seats": {"National": 50}, "house": 120, "majority": 61, "order": []}},
+        "official",
+    )
+    assert official["label"] == "New Parliament 2026"
+    assert official["provisional"] is False
     assert "morning dishes" in live
     assert "$100" in live
     assert "morning dishes" not in public_live.lower()
