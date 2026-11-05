@@ -194,6 +194,68 @@ def majority_line(house: int) -> int:
     return int(house) // 2 + 1
 
 
+# The blocs people actually talk about, shown even when they are short.
+# Any other minimal combination that reaches the majority line is added after these.
+NAMED_BLOCS = (
+    ("National", "ACT", "NZ First"),
+    ("National", "ACT"),
+    ("National", "NZ First"),
+    ("Labour", "Green", "Te Pāti Māori"),
+    ("Labour", "Green"),
+)
+
+
+def coalition_options(seats: dict, majority: int) -> list[dict]:
+    """Named blocs, plus any other minimal combo that clears the majority line."""
+    clean = {}
+    for name, value in (seats or {}).items():
+        try:
+            count = int(value)
+        except (TypeError, ValueError):
+            continue
+        if count > 0:
+            clean[str(name)] = count
+    parties = [name for name in HOUSE_ORDER if clean.get(name)]
+    for name in clean:
+        if name not in parties:
+            parties.append(name)
+
+    def pack(names: tuple) -> dict:
+        total = sum(clean.get(name, 0) for name in names)
+        short = max(0, int(majority) - total)
+        return {
+            "names": list(names),
+            "seats": total,
+            "short": short,
+            "majority": short == 0 and total > 0,
+        }
+
+    named = [pack(names) for names in NAMED_BLOCS]
+    seen = {frozenset(row["names"]) for row in named}
+    extras = []
+    from itertools import combinations
+    for size in range(2, min(4, len(parties)) + 1):
+        for combo in combinations(parties, size):
+            key = frozenset(combo)
+            if key in seen:
+                continue
+            total = sum(clean.get(name, 0) for name in combo)
+            if total < int(majority):
+                continue
+            smaller = False
+            for drop in combo:
+                rest = [name for name in combo if name != drop]
+                if rest and sum(clean.get(name, 0) for name in rest) >= int(majority):
+                    smaller = True
+                    break
+            if smaller:
+                continue
+            extras.append(pack(combo))
+            seen.add(key)
+    extras.sort(key=lambda row: (-row["seats"], row["names"]))
+    return named + extras
+
+
 def _bloc(seats: dict, names: tuple, majority: int) -> dict:
     total = sum(int(seats.get(name) or 0) for name in names)
     short = max(0, majority - total)

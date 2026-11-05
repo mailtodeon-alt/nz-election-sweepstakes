@@ -6,10 +6,10 @@
 <meta name="theme-color" content="#070b14"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
-<meta name="apple-mobile-web-app-title" content="Sweepstakes"/>
+<meta name="apple-mobile-web-app-title" content="NZ Election"/>
 <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
 <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png"/>
-<link rel="manifest" id="manifestLink" href="/manifest.webmanifest"/>
+<link rel="manifest" href="/manifest.webmanifest"/>
 <link rel="stylesheet" href="/static/css/app.css"/>
 <style>
 .choice-grid { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -28,6 +28,10 @@
   <div class="row" style="margin-bottom:8px">
     <span class="pill" id="statusPill">LOADING</span>
     <span class="pill demo hidden" id="demoPill">DEMO</span>
+  </div>
+  <div id="identityBanner" class="card identity-banner hidden" role="status">
+    <p id="identityText"></p>
+    <button type="button" id="thisIsMe">This is me</button>
   </div>
   <h1 style="margin:6px 0 4px" id="hello">Your predictions</h1>
   <p class="muted hidden" id="funNote">Playing for fun — this entry is not in the prize pot.</p>
@@ -64,7 +68,7 @@
   </div>
   <div class="card" id="a2hs" style="border-color:#3a6a2a">
     <h3 style="margin-top:0">Add to Home Screen</h3>
-    <p class="muted" style="margin:0 0 8px">Install this page so election night opens <strong>your</strong> ballot in one tap.</p>
+    <p class="muted" style="margin:0 0 8px">Install the site. The icon opens the home page. Tap <strong>This is me</strong> on your own ballot so My picks remembers this phone.</p>
     <ul class="muted" style="margin:0;padding-left:18px;font-size:14px">
       <li><strong>iPhone/iPad:</strong> tap Share then <em>Add to Home Screen</em>.</li>
       <li><strong>Android Chrome:</strong> menu, then <em>Install app</em> or <em>Add to Home screen</em>.</li>
@@ -92,11 +96,7 @@
 <script>
 const token = location.pathname.split('/').filter(Boolean).pop();
 
-// PWA: player-specific manifest so home-screen icon opens this ballot
 (function(){
-  const link = document.getElementById('manifestLink');
-  if (link) link.href = '/api/player/' + encodeURIComponent(token) + '/manifest.webmanifest' + (Sweep.isDemo ? '?demo=1' : '');
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
   let deferred = null;
   window.addEventListener('beforeinstallprompt', (e) => {
     e.preventDefault(); deferred = e;
@@ -217,6 +217,42 @@ function render() {
   }
 }
 
+function ballotName() {
+  if (!state) return 'this player';
+  const publicPlayer = state.player.pool === 'public';
+  const raw = publicPlayer ? unescapeHtml(state.player.name) : state.player.name;
+  return raw || 'this player';
+}
+function meKey() { return Sweep.isDemo ? 'sweep_me_demo' : 'sweep_me'; }
+function readMe() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(meKey()) || 'null');
+    if (saved && saved.token) return saved;
+  } catch (e) {}
+  return null;
+}
+function showIdentity() {
+  const banner = document.getElementById('identityBanner');
+  const me = readMe();
+  const mine = me && me.token === (state.player.token || token);
+  banner.classList.toggle('hidden', !!mine);
+  if (mine) return;
+  document.getElementById('identityText').textContent = "This is " + ballotName() + "'s private ballot";
+}
+document.getElementById('thisIsMe').onclick = () => {
+  if (!state) return;
+  const saved = {
+    token: state.player.token || token,
+    pool: state.player.pool || 'pot',
+    name: ballotName(),
+    path: location.pathname,
+  };
+  if (Sweep.bindIdentity) Sweep.bindIdentity(saved);
+  else {
+    try { localStorage.setItem(meKey(), JSON.stringify(saved)); } catch (e) {}
+  }
+  showIdentity();
+};
 async function load() {
   state = await Sweep.api('/api/player/' + token);
   // seed answers from server once
@@ -224,6 +260,10 @@ async function load() {
     const qid = String(q.id);
     if (answers[qid] === undefined) answers[qid] = state.predictions[qid] ?? '';
   });
+  const preds = state.predictions || {};
+  const hasPred = Object.keys(preds).some((k) => preds[k] != null && String(preds[k]) !== '');
+  document.getElementById('saveState').textContent = hasPred ? 'Saved' : 'Not saved yet';
+  showIdentity();
   render();
 }
 async function persist() {

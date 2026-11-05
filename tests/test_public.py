@@ -154,7 +154,64 @@ def test_pages():
     assert "localStorage" in opened
     assert "Copy link" in opened
     live = expect(CLIENT.get("/live"), 200)
+    assert 'class="tv-head-main"' in live
+    assert "Public leaderboard" in live
+    open_live = expect(CLIENT.get("/open/live"), 200)
+    assert "Show all" in open_live
+    assert 'id="playerSearch"' in open_live
     public_live = expect(CLIENT.get("/open/live"), 200)
+    conn = D.connect(False)
+    try:
+        sample = D.list_players(conn, pool=D.POOL_POT)[0]["token"]
+    finally:
+        conn.close()
+    ballot = expect(CLIENT.get(f"/p/{sample}"), 200)
+    assert "This is me" in ballot
+    assert "manifestLink" not in ballot
+    assert "/api/player/" + sample + "/manifest.webmanifest" not in ballot
+    common = CLIENT.get("/static/js/common.js").get_data(as_text=True)
+    assert "bindIdentity" in common
+    assert "sweep_public_entry" not in common
+    recap = expect(CLIENT.get("/api/recap"), 200)
+    assert recap["awaiting"] is True
+    assert recap["message"] == "No results yet, recap fills in once counting starts"
+    assert not recap.get("leader")
+    assert not recap.get("top")
+    assert recap["parliament"]["label"] == "Current Parliament (2023 election)"
+    assert recap["parliament"]["projected"] is False
+    page = expect(CLIENT.get("/coalition"), 200)
+    assert "Nothing here is scraped" not in page
+    coal = expect(CLIENT.get("/api/coalition"), 200)
+    assert coal["house"] == 123
+    assert coal["majority"] == 62
+    assert coal["source"] == "current"
+    right = next(b for b in coal["blocs"] if b["names"] == ["National", "ACT", "NZ First"])
+    assert right["seats"] == 68 and right["majority"] is True
+    short = next(b for b in coal["blocs"] if b["names"] == ["National", "ACT"])
+    assert short["seats"] == 60 and short["short"] == 2
+    conn = D.connect(False)
+    try:
+        D.set_setting(conn, "news_json", json.dumps([
+            {"title": "Coalition talks begin", "summary": "A deal is on the table", "url": "https://example.com/a", "source": "RNZ", "published": "2026-11-06T10:00:00+13:00"},
+            {"title": "Fine weather on election day", "summary": "Sunny spells", "url": "https://example.com/b", "source": "MetService", "published": "2026-11-06T12:00:00+13:00"},
+        ]))
+        conn.commit()
+    finally:
+        conn.close()
+    headed = expect(CLIENT.get("/api/coalition"), 200)["news"]
+    assert [item["title"] for item in headed] == ["Coalition talks begin"]
+    conn = D.connect(False)
+    try:
+        D.set_setting(conn, "news_json", "[]")
+        conn.commit()
+    finally:
+        conn.close()
+    official = S._parliament_view(
+        {"has_results": True, "live": {"label": "old", "seats": {"National": 50}, "house": 120, "majority": 61, "order": []}},
+        "official",
+    )
+    assert official["label"] == "New Parliament 2026"
+    assert official["provisional"] is False
     assert "morning dishes" in live
     assert "$100" in live
     assert "morning dishes" not in public_live.lower()
@@ -187,8 +244,9 @@ def test_signup_issues_unguessable_link():
     assert len(token) >= 20
     assert token not in ("fun-only", "Fun Only")
     manifest = expect(CLIENT.get(f"/api/player/{token}/manifest.webmanifest"), 200)
-    assert manifest["start_url"] == f"/p/{token}"
-    assert "Fun Only" in manifest["name"]
+    assert manifest["start_url"] == "/"
+    assert manifest["short_name"] == "NZ Election"
+    assert "Fun Only" not in json.dumps(manifest)
     assert CLIENT.get(f"/p/{token}").status_code == 200
     me = expect(CLIENT.get(f"/api/player/{token}"), 200)
     assert me["player"]["pool"] == "public"
@@ -466,14 +524,17 @@ def test_demo_does_not_leak():
     demo_pub = expect(CLIENT.get("/api/open/state", headers={"X-Demo": "1"}), 200)
     assert [r["name"] for r in real_pub["leaderboard"]] == ["LiveLana"]
     assert [r["name"] for r in demo_pub["leaderboard"]] == ["DemoDana"]
-    demo_manifest = expect(
-        CLIENT.get(f"/api/player/{demo['token']}/manifest.webmanifest?demo=1"),
-        200,
-    )
-    assert demo_manifest["start_url"] == f"/demo/p/{demo['token']}"
-    assert "DemoDana" in demo_manifest["name"]
-    assert CLIENT.get(f"/api/player/{demo['token']}/manifest.webmanifest").status_code == 404
-    assert CLIENT.get(f"/api/player/{live['token']}/manifest.webmanifest?demo=1").status_code == 404
+    for url in (
+        f"/api/player/{demo['token']}/manifest.webmanifest?demo=1",
+        f"/api/player/{demo['token']}/manifest.webmanifest",
+        f"/api/player/{live['token']}/manifest.webmanifest?demo=1",
+    ):
+        body = expect(CLIENT.get(url), 200)
+        assert body["start_url"] == "/"
+        assert body["short_name"] == "NZ Election"
+        dumped = json.dumps(body)
+        assert "DemoDana" not in dumped
+        assert "LiveLana" not in dumped
     pot = expect(CLIENT.get("/api/state"), 200)
     assert all(r["name"] not in ("LiveLana", "DemoDana") for r in pot["leaderboard"])
     expect(CLIENT.post("/api/admin/demo/reset"), 200)

@@ -293,36 +293,12 @@ def service_worker():
 
 @app.get("/api/player/<token>/manifest.webmanifest")
 def player_manifest(token):
-    """Per-player manifest so Add to Home Screen opens their ballot."""
-    demo = use_demo()
-    conn = D.connect(demo)
-    try:
-        p = D.player_by_token(conn, token)
-        if not p:
-            return jsonify({"error": "not found"}), 404
-        start = f"/p/{token}"
-        if demo:
-            start = f"/demo/p/{token}"
-        body = {
-            "name": f"Election Sweepstakes 2026 — {p['name']}",
-            "short_name": "Sweepstakes",
-            "description": "NZ Election Night Sweepstakes",
-            "start_url": start,
-            "scope": "/",
-            "display": "standalone",
-            "orientation": "any",
-            "background_color": "#070b14",
-            "theme_color": "#070b14",
-            "icons": [
-                {"src": "/static/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any maskable"},
-                {"src": "/static/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any maskable"},
-            ],
-        }
-        resp = jsonify(body)
-        resp.headers["Content-Type"] = "application/manifest+json"
-        return resp
-    finally:
-        conn.close()
+    """Old installs requested a per-player manifest. Always serve the site one.
+
+    start_url stays /, so a home-screen icon cannot open someone else's ballot.
+    The token is ignored and no player row is read.
+    """
+    return send_from_directory(ROOT / "static", "manifest.webmanifest", mimetype="application/manifest+json")
 
 
 @app.get("/")
@@ -1880,17 +1856,104 @@ def _pinned_recap(conn, pool: str):
     return payload
 
 
+def _parliament_view(house: dict, mode: str) -> dict:
+    """Current House before a count. After results, the 2026 allocation, provisional until official."""
+    if house.get("has_results") and house.get("live"):
+        view = dict(house["live"])
+        final = (mode or "") == "official"
+        view["label"] = "New Parliament 2026" if final else "New Parliament 2026 (provisional)"
+        view["projected"] = True
+        view["provisional"] = not final
+        return view
+    view = dict(house.get("current") or {})
+    view["projected"] = False
+    view["provisional"] = False
+    return view
+
+
+_COALITION_WORDS = ("coalition", "deal", "negotiat", "kingmaker", "confidence and supply")
+
+
+def coalition_headlines(items) -> list:
+    matched = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        blob = f"{item.get('title') or ''} {item.get('summary') or ''}".lower()
+        if not any(word in blob for word in _COALITION_WORDS):
+            continue
+        matched.append({
+            "title": item.get("title") or "",
+            "url": item.get("url") or "",
+            "source": item.get("source") or "",
+            "published": item.get("published") or "",
+        })
+    matched.sort(key=lambda row: row.get("published") or "", reverse=True)
+    return matched[:10]
+
+
+def _awaiting_recap(pool: str) -> dict:
+    return {
+        "pool": pool,
+        "title": "Recap",
+        "at": D.iso_now(),
+        "awaiting": True,
+        "message": "No results yet, recap fills in once counting starts",
+        "leader": None,
+        "leader_total": None,
+        "top": [],
+        "best_call": None,
+        "best_points": None,
+        "worst_call": None,
+        "worst_lost": None,
+        "biggest_mover": None,
+    }
+
+
+def _attach_parliament(payload: dict, house: dict, mode: str) -> dict:
+    view = _parliament_view(house, mode)
+    payload["parliament"] = view
+    payload["house_seats"] = view.get("seats") or {}
+    payload["house_order"] = view.get("order") or []
+    return payload
+
+
 def _build_recap(conn, pool: str) -> dict:
+    settings = D.all_settings(conn)
+    house = house_payload(conn, settings)
+    mode = settings.get("board_mode") or "live"
+    if not house.get("has_results"):
+        return _attach_parliament(_awaiting_recap(pool), house, mode)
     ranked, questions, _players, _results = build_leaderboard(conn, pool=pool)
     if pool == D.POOL_PUBLIC:
         nat = national_actual_from_results(conn, questions, {k: v["value"] for k, v in D.get_results(conn).items()})
         ranked = enrich_leaderboard(N.public_rows_with_side_bets(ranked, conn, nat), questions)
     mover = W.biggest_mover(N.history_series(conn, pool))
     payload = W.recap_from_state(pool, ranked, mover, D.iso_now())
-    house = house_payload(conn, D.all_settings(conn))
-    view = house.get("live") or house.get("current") or {}
-    payload["house_seats"] = view.get("seats") or {}
-    payload["house_order"] = view.get("order") or []
+    payload["awaiting"] = False
+    return _attach_parliament(payload, house, mode)
+
+
+def _serve_recap(conn, pool: str) -> dict:
+    """Before the count, never crown a leader, including a recap pinned too early."""
+    settings = D.all_settings(conn)
+    house = house_payload(conn, settings)
+    mode = settings.get("board_mode") or "live"
+    if not house.get("has_results"):
+        payload = _attach_parliament(_awaiting_recap(pool), house, mode)
+        payload["pinned"] = False
+        return payload
+    pinned = _pinned_recap(conn, pool)
+    payload = pinned or _build_recap(conn, pool)
+    if pinned:
+        payload = _attach_parliament(payload, house, mode)
+        if not payload.get("top") or len(payload.get("top") or []) < 4:
+            fresh = _build_recap(conn, pool)
+            payload["top"] = fresh.get("top") or payload.get("top")
+            payload["leader"] = fresh.get("leader", payload.get("leader"))
+            payload["leader_total"] = fresh.get("leader_total", payload.get("leader_total"))
+    payload["pinned"] = bool(pinned)
+    payload.setdefault("awaiting", False)
     return payload
 
 
@@ -1915,10 +1978,7 @@ def api_recap():
     pool = D.POOL_PUBLIC if request.args.get("pool") == "public" else D.POOL_POT
     conn = D.connect(demo)
     try:
-        pinned = _pinned_recap(conn, pool)
-        payload = pinned or _build_recap(conn, pool)
-        payload["pinned"] = bool(pinned)
-        return jsonify(payload)
+        return jsonify(_serve_recap(conn, pool))
     finally:
         conn.close()
 
@@ -1930,8 +1990,7 @@ def recap_png():
     pool = D.POOL_PUBLIC if request.path.startswith("/open") or request.args.get("pool") == "public" else D.POOL_POT
     conn = D.connect(demo)
     try:
-        pinned = _pinned_recap(conn, pool)
-        payload = pinned or _build_recap(conn, pool)
+        payload = _serve_recap(conn, pool)
     finally:
         conn.close()
     body = W.render_recap_png(payload)
@@ -1967,8 +2026,12 @@ def api_coalition():
     demo = use_demo()
     conn = D.connect(demo)
     try:
+        settings = D.all_settings(conn)
+        house = house_payload(conn, settings)
+        mode = settings.get("board_mode") or "live"
+        view = _parliament_view(house, mode)
         rows = []
-        for r in conn.execute("SELECT * FROM coalition_events WHERE active=1 ORDER BY id"):
+        for r in conn.execute("SELECT * FROM coalition_events WHERE active=1 ORDER BY id DESC"):
             rows.append({
                 "id": r["id"],
                 "at": r["at"],
@@ -1976,7 +2039,16 @@ def api_coalition():
                 "source_url": r["source_url"] or "",
                 "parties": r["parties"] or "",
             })
-        return jsonify({"events": rows})
+        return jsonify({
+            "label": view.get("label") or "",
+            "source": "projected" if view.get("projected") else "current",
+            "provisional": bool(view.get("provisional")),
+            "house": view.get("house") or 0,
+            "majority": view.get("majority") or 0,
+            "blocs": P.coalition_options(view.get("seats") or {}, view.get("majority") or 62),
+            "news": coalition_headlines(_json_setting(settings, "news_json", [])),
+            "events": rows,
+        })
     finally:
         conn.close()
 

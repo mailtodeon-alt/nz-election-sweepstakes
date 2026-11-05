@@ -16,6 +16,7 @@ sys.path.insert(0, str(ROOT))
 
 from app import app  # noqa: E402
 import db as D  # noqa: E402
+import weekend as W  # noqa: E402
 from projection import (  # noqa: E402
     OFFICIAL_ELECTORATES_2023, OFFICIAL_SEATS_2023, OFFICIAL_VOTES_2023, sainte_lague,
 )
@@ -134,6 +135,11 @@ def test_bonus_closest_is_public_only():
     }), 200)
     events = expect(CLIENT.get("/api/coalition"), 200)["events"]
     assert any(e["headline"] == "Talks continue" and e["source_url"].startswith("https://") for e in events)
+    recap = expect(CLIENT.get("/api/recap"), 200)
+    assert recap["awaiting"] is False
+    assert recap["parliament"]["label"] == "New Parliament 2026 (provisional)"
+    assert recap["parliament"]["projected"] is True
+    assert len(recap["top"]) == 6
     png = CLIENT.get("/recap.png")
     assert png.status_code == 200
     assert png.data[:8] == b"\x89PNG\r\n\x1a\n"
@@ -166,8 +172,23 @@ def test_demo_weekend_preview_leaves_real_rows():
     assert after == before
 
 
+def test_recap_standings_mark_ties():
+    rows = [
+        {"place": 1, "name": "Caleb", "total": 10},
+        {"place": 1, "name": "Deon", "total": 10},
+        {"place": 3, "name": "Jarrad", "total": 4},
+        {"place": 4, "name": "Mark", "total": 3},
+        {"place": 5, "name": "Nathan", "total": 2},
+        {"place": 6, "name": "Pete", "total": 1},
+    ]
+    card = W.recap_from_state("pot", rows, None, "t")
+    assert [row["place_label"] for row in card["top"]] == ["=1", "=1", "3", "4", "5", "6"]
+    assert len(card["top"]) == 6
+
+
 def main():
     test_sainte_lague_matches_2023_official()
+    test_recap_standings_mark_ties()
     test_latest_count_does_not_move_frozen_pot()
     test_bonus_closest_is_public_only()
     test_demo_weekend_preview_leaves_real_rows()
