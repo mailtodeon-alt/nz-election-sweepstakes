@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Join Sweepstakes</title>
+<meta name="theme-color" content="#070b14"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Sweepstakes"/>
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png"/>
+<link rel="manifest" href="/manifest.webmanifest"/>
+<link rel="stylesheet" href="/static/css/app.css"/>
+</head>
+<body>
+<div class="wrap">
+  <div class="hero">
+    <h1>Join the sweepstakes</h1>
+    <p>Ask the admin for your personal link — each player has a unique unguessable URL so entries can't be duplicated.</p>
+  </div>
+  <div class="card" style="text-align:center">
+    <p class="muted">Scan this QR to open the join page on another phone, then get your personal link from the host.</p>
+    <div id="qr" style="display:inline-block;background:#fff;padding:12px;border-radius:12px"></div>
+    <p class="muted" id="url" style="word-break:break-all;margin-top:10px"></p>
+  </div>
+  <div class="card">
+    <h3>Players</h3>
+    <div id="players" class="muted">Loading…</div>
+  </div>
+  <p style="text-align:center"><a href="/">← Home</a></p>
+</div>
+<script src="/static/js/common.js"></script>
+<script>
+const joinUrl = location.origin + (Sweep.isDemo ? '/demo/join' : '/join');
+document.getElementById('url').textContent = joinUrl;
+document.getElementById('qr').innerHTML = `<img alt="QR" width="200" height="200" src="/api/qr?url=${encodeURIComponent(joinUrl)}"/>`;
+Sweep.api('/api/state').then(s => {
+  document.getElementById('players').innerHTML = s.players.map(p =>
+    `<div style="display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid #22345c">
+      <span><strong>${p.name}</strong> <span class="muted">slot ${p.slot}</span></span>
+      <span class="pill ${s.leaderboard.find(l=>l.player_id===p.id)?.submitted ? 'live':'locked'}">${s.leaderboard.find(l=>l.player_id===p.id)?.submitted ? 'IN':'WAITING'}</span>
+    </div>`
+  ).join('') || 'No players yet — admin will add them.';
+});
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+</script>
+</body></html>

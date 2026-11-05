@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1"/>
+<title>Your predictions</title>
+<meta name="theme-color" content="#070b14"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Sweepstakes"/>
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png"/>
+<link rel="manifest" id="manifestLink" href="/manifest.webmanifest"/>
+<link rel="stylesheet" href="/static/css/app.css"/>
+<style>
+.choice-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+.choice-btn {
+  flex: 1 1 calc(50% - 8px); min-width: 120px; min-height: 56px;
+  background: #152038; border: 2px solid #2a4068; border-radius: 14px;
+  color: var(--text); font-weight: 800; font-size: 16px; padding: 12px 10px; cursor: pointer;
+}
+.choice-btn.selected { background: #1e4d8c; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(93,214,255,.25); }
+.choice-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+.tb-box input { font-size: 22px; font-weight: 800; text-align: center; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row" style="margin-bottom:8px">
+    <span class="pill" id="statusPill">LOADING</span>
+    <span class="pill demo hidden" id="demoPill">DEMO</span>
+  </div>
+  <h1 style="margin:6px 0 4px" id="hello">Your predictions</h1>
+  <p class="muted" id="sub">Tap a band for each question. Exact band = full points, adjacent band = partial. You can edit until lock.</p>
+  <div class="card">
+    <label>Your display name</label>
+    <input id="name" maxlength="40" placeholder="e.g. Deon"/>
+  </div>
+  
+  <div class="card" id="a2hs" style="border-color:#3a6a2a">
+    <h3 style="margin-top:0">Add to Home Screen</h3>
+    <p class="muted" style="margin:0 0 8px">Install this page so election night opens <strong>your</strong> ballot in one tap.</p>
+    <ul class="muted" style="margin:0;padding-left:18px;font-size:14px">
+      <li><strong>iPhone/iPad:</strong> tap Share &nbsp;▢↑&nbsp; then <em>Add to Home Screen</em>.</li>
+      <li><strong>Android Chrome:</strong> tap the install banner, or menu ⋮ → <em>Install app</em> / <em>Add to Home screen</em>.</li>
+    </ul>
+    <button class="secondary" id="a2hsInstall" style="margin-top:10px;display:none">Install app</button>
+    <p class="muted" style="font-size:12px;margin-top:8px">Note: if the host restarts the public link, re-open your personal URL once and re-add the icon.</p>
+  </div>
+
+  <div id="questions"></div>
+  <div class="card tb-box">
+    <h3 style="margin-top:0">Tie-breaker</h3>
+    <p class="muted" style="margin-top:0">National's exact party vote % (one decimal). Closest wins if scores are tied. Does not add points.</p>
+    <input id="tb" type="number" step="0.1" inputmode="decimal" placeholder="e.g. 35.2"/>
+  </div>
+  <div class="card">
+    <p class="muted" id="rules" style="font-size:13px"></p>
+    <button id="save" style="width:100%;padding:14px;font-size:17px">Save predictions</button>
+    <p class="muted" id="saveMsg" style="margin-top:8px;text-align:center"></p>
+  </div>
+  <div class="card hidden" id="scoreCard">
+    <h3>Your score</h3>
+    <div id="scoreBody"></div>
+  </div>
+</div>
+<script src="/static/js/common.js"></script>
+<script>
+const token = location.pathname.split('/').filter(Boolean).pop();
+
+// PWA: player-specific manifest so home-screen icon opens this ballot
+(function(){
+  const link = document.getElementById('manifestLink');
+  if (link) link.href = '/api/player/' + token + '/manifest.webmanifest';
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  let deferred = null;
+  window.addEventListener('beforeinstallprompt', (e) => {
+    e.preventDefault(); deferred = e;
+    const b = document.getElementById('a2hsInstall');
+    if (b) { b.style.display = 'inline-block'; b.onclick = async () => { deferred.prompt(); deferred = null; b.style.display='none'; }; }
+  });
+})();
+
+let state = null;
+const answers = {}; // qid -> value
+
+function render() {
+  if (!state) return;
+  document.getElementById('hello').textContent = state.player.name + "'s ballot";
+  document.getElementById('name').value = state.player.name;
+  document.getElementById('tb').value = state.player.tb_national_vote || '';
+  document.getElementById('tb').disabled = !!state.locked;
+  const pill = document.getElementById('statusPill');
+  if (state.locked) { pill.textContent = 'LOCKED'; pill.className = 'pill locked'; }
+  else { pill.textContent = 'OPEN · closes ' + Sweep.fmtCountdown(state.lock_at, state.server_now); pill.className = 'pill live'; }
+  if (state.demo) document.getElementById('demoPill').classList.remove('hidden');
+  document.getElementById('rules').innerHTML =
+    (state.settings.seats_note || '') + '<br>' + (state.settings.most_seats_tie_rule || '');
+  document.getElementById('save').disabled = !!state.locked;
+  document.getElementById('name').disabled = !!state.locked;
+
+  const box = document.getElementById('questions');
+  box.innerHTML = '';
+  state.questions.forEach(q => {
+    const qid = String(q.id);
+    if (answers[qid] === undefined) answers[qid] = state.predictions[qid] ?? '';
+    const div = document.createElement('div');
+    div.className = 'card q';
+    let scoreHtml = '';
+    if (state.locked && state.score) {
+      const d = state.score.detail.find(x => x.question_id === qid);
+      if (d) {
+        scoreHtml = d.status === 'pending'
+          ? `<span class="score-chip">PENDING</span>`
+          : `<span class="score-chip">${d.points}/${d.max}</span>`;
+      }
+    }
+    const choices = (q.meta && q.meta.choices) || [];
+    const btns = choices.map(c => {
+      const sel = answers[qid] === c ? 'selected' : '';
+      return `<button type="button" class="choice-btn ${sel}" data-qid="${qid}" data-val="${c.replace(/"/g,'&quot;')}" ${state.locked?'disabled':''}>${c}</button>`;
+    }).join('');
+    div.innerHTML = `<div class="label">${q.sort_order}. ${q.label} <span class="muted">(${q.max_points} pts)</span> ${scoreHtml}</div>
+      <div class="choice-grid">${btns}</div>`;
+    box.appendChild(div);
+  });
+  box.querySelectorAll('.choice-btn').forEach(btn => {
+    btn.onclick = () => {
+      answers[btn.dataset.qid] = btn.dataset.val;
+      render();
+    };
+  });
+
+  if (state.locked && state.score) {
+    document.getElementById('scoreCard').classList.remove('hidden');
+    document.getElementById('scoreBody').innerHTML =
+      `<div style="font-size:2rem;font-weight:900;font-family:var(--mono)">${state.score.total}<span class="muted" style="font-size:1rem"> / ${state.score.max_possible}</span></div>
+       <div class="muted">Scored on ${state.score.available} pts available · ${state.score.pending_max} still pending</div>`;
+  }
+}
+
+async function load() {
+  state = await Sweep.api('/api/player/' + token);
+  // seed answers from server once
+  state.questions.forEach(q => {
+    const qid = String(q.id);
+    if (answers[qid] === undefined) answers[qid] = state.predictions[qid] ?? '';
+  });
+  render();
+}
+document.getElementById('save').onclick = async () => {
+  try {
+    await Sweep.api('/api/player/' + token + '/predictions', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: document.getElementById('name').value,
+        predictions: answers,
+        tb_national_vote: document.getElementById('tb').value
+      })
+    });
+    Sweep.toast('Saved');
+    document.getElementById('saveMsg').textContent = 'Saved at ' + new Date().toLocaleTimeString();
+    await load();
+  } catch (e) {
+    Sweep.toast(e.data?.message || e.message);
+  }
+};
+load();
+Sweep.subscribe(() => load());
+setInterval(() => { if (state && !state.locked) {
+  document.getElementById('statusPill').textContent = 'OPEN · closes ' + Sweep.fmtCountdown(state.lock_at);
+}}, 1000);
+</script>
+</body></html>

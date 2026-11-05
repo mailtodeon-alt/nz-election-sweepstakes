@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/><meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Compare predictions</title>
+<meta name="theme-color" content="#070b14"/>
+<meta name="apple-mobile-web-app-capable" content="yes"/>
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
+<meta name="apple-mobile-web-app-title" content="Sweepstakes"/>
+<link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png"/>
+<link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png"/>
+<link rel="manifest" href="/manifest.webmanifest"/>
+<link rel="stylesheet" href="/static/css/app.css"/>
+</head>
+<body>
+<div class="wrap" style="max-width:1100px">
+  <div class="row"><span class="pill" id="mode">COMPARE</span><span class="pill demo hidden" id="demoPill">DEMO</span></div>
+  <h1>Prediction comparison</h1>
+  <p class="muted" id="note">Predictions stay hidden until entries lock.</p>
+  <div class="card" style="overflow:auto">
+    <table id="tbl"><thead></thead><tbody></tbody></table>
+  </div>
+  <p><a href="/">← Home</a> · <a href="/live">TV board</a></p>
+</div>
+<script src="/static/js/common.js"></script>
+<script>
+async function load() {
+  const s = await Sweep.api('/api/state');
+  if (s.demo) document.getElementById('demoPill').classList.remove('hidden');
+  if (!s.locked) {
+    document.getElementById('note').textContent = 'Entries still open — predictions are hidden from other players.';
+    document.querySelector('#tbl thead').innerHTML = '<tr><th>Player</th><th>Status</th></tr>';
+    document.querySelector('#tbl tbody').innerHTML = s.leaderboard.map(p =>
+      `<tr><td>${p.name}</td><td>${p.submitted?'Submitted':'Waiting'}</td></tr>`).join('');
+    return;
+  }
+  document.getElementById('note').textContent = 'Live provisional comparison. PENDING = result not yet available.';
+  const head = ['Player','Total', ...s.questions.map(q => q.key)];
+  document.querySelector('#tbl thead').innerHTML = '<tr>'+head.map(h=>`<th>${h}</th>`).join('')+'</tr>';
+  // actuals row
+  let actualRow = '<tr><td><em>ACTUAL</em></td><td></td>';
+  s.questions.forEach(q => {
+    const r = s.results[String(q.id)];
+    actualRow += `<td>${r ? r.value + ' <span class="pill '+r.source+'">'+r.source+'</span>' : 'PENDING'}</td>`;
+  });
+  actualRow += '</tr>';
+  const body = s.leaderboard.map(p => {
+    let row = `<tr><td><strong>${p.name}</strong></td><td>${p.total}</td>`;
+    const byQ = Object.fromEntries((p.detail||[]).map(d => [d.question_id, d]));
+    s.questions.forEach(q => {
+      const d = byQ[String(q.id)];
+      if (!d) { row += '<td>—</td>'; return; }
+      const pts = d.status==='pending' ? 'PEND' : (d.points+'pts');
+      row += `<td>${d.predicted ?? '—'} <span class="muted">(${pts})</span></td>`;
+    });
+    return row + '</tr>';
+  }).join('');
+  document.querySelector('#tbl tbody').innerHTML = actualRow + body;
+}
+load();
+Sweep.subscribe(() => load());
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch(()=>{});
+}
+</script>
+</body></html>
