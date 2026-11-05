@@ -65,7 +65,7 @@ html.tv-fit, html.tv-fit body { overflow: hidden; height: 100%; }
         <a class="btn secondary" id="coalitionLink" href="/coalition">Coalition</a>
       </nav>
       <h1 class="tv-title" id="title">NZ Election Sweepstakes</h1>
-      <div class="tv-sub" id="sub">Prize pool $120</div>
+      <div class="tv-sub" id="sub">Prize pool $120 · <a id="publicBoardLink" href="/open/live">Public leaderboard</a></div>
     </div>
     <div class="tv-meta">
       <strong id="countdown">—</strong>
@@ -278,6 +278,7 @@ function render() {
     document.getElementById('recapLink').href = '/demo/recap';
     document.getElementById('coalitionLink').href = '/demo/coalition';
     document.getElementById('boardLink').href = '/demo/live';
+    document.getElementById('publicBoardLink').href = '/demo/open/live';
   }
   renderLatest(state.latest_count);
   renderEstimate(state.projection);

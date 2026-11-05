@@ -197,17 +197,21 @@ window.Sweep = (function () {
     const board = me && me.pool === 'public'
       ? { href: pathFor('/open/live'), label: 'Live board', icon: '▣' }
       : { href: pathFor('/live'), label: 'Live board', icon: '▣' };
+    const publicBoard = { href: pathFor('/open/live'), label: 'Public leaderboard', icon: '◎' };
     const recap = me && me.pool === 'public' ? pathFor('/open/recap') : pathFor('/recap');
-    return [
+    const nav = [
       { href: pathFor('/'), label: 'Home', icon: '⌂' },
       { href: pathFor('/results'), label: 'Results', icon: '▤' },
       { href: pathFor('/seats'), label: 'Seats', icon: '◕' },
       { href: pathFor('/news'), label: 'News', icon: '✎' },
       board,
+    ];
+    if (board.href !== publicBoard.href) nav.push(publicBoard);
+    return nav.concat([
       picks,
       { href: pathFor('/coalition'), label: 'Coalition', icon: '⚑' },
       { href: recap, label: 'Recap', icon: '★' },
-    ];
+    ]);
   }
   const header = document.createElement('header');
   header.className = 'site-header';

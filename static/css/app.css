@@ -145,6 +145,23 @@ body:has(.tv) { padding: 0; }
 }
 .tv.pot-board .leader-row { height: auto; }
 .tv.pot-board .news-strip { overflow: visible; flex-wrap: wrap; }
+.tv.public-board {
+  height: auto; min-height: 100vh; min-height: 100dvh; overflow: visible;
+}
+.tv.public-board .board { order: 1; }
+.tv.public-board #houseHero { order: 2; }
+.tv.public-board #beforeCount { order: 3; }
+.tv.public-board .board,
+.tv.public-board .leader-list,
+.tv.public-board .side-panel,
+.tv.public-board #beforeCount {
+  height: auto; max-height: none; min-height: 0; overflow: visible;
+}
+.public-tools { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0 10px; }
+.public-tools input { width: min(280px, 100%); flex: 1 1 180px; }
+.public-tools .muted { flex: 1 1 100%; margin: 0; }
+.leader-row.you { outline: 2px solid var(--accent); }
+.list-gap { text-align: center; letter-spacing: 0.2em; margin: 4px 0; }
 .tv.view-latest .tv-stage, .tv.view-estimate .tv-stage, .tv.view-ranks .tv-stage,
 .tv.view-latest #newsStrip, .tv.view-estimate #newsStrip, .tv.view-ranks #newsStrip { display: none; }
 @media (max-width: 900px) {

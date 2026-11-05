@@ -155,6 +155,10 @@ def test_pages():
     assert "Copy link" in opened
     live = expect(CLIENT.get("/live"), 200)
     assert 'class="tv-head-main"' in live
+    assert "Public leaderboard" in live
+    open_live = expect(CLIENT.get("/open/live"), 200)
+    assert "Show all" in open_live
+    assert 'id="playerSearch"' in open_live
     public_live = expect(CLIENT.get("/open/live"), 200)
     conn = D.connect(False)
     try:
