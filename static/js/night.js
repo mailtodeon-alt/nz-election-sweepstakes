@@ -122,7 +122,41 @@ window.Night = (function () {
     box.innerHTML = html;
   }
 
+  function drawChartCanvas(canvas, series) {
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    const cssW = Math.max(320, canvas.clientWidth || canvas.parentElement.clientWidth || 900);
+    const cssH = Math.max(220, Math.min(window.innerHeight * 0.5, 560));
+    canvas.width = Math.round(cssW * dpr);
+    canvas.height = Math.round(cssH * dpr);
+    canvas.style.width = cssW + 'px';
+    canvas.style.height = cssH + 'px';
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#0c1426';
+    ctx.fillRect(0, 0, cssW, cssH);
+    const list = (series || []).slice().sort((a, b) => {
+      const at = (a.points[a.points.length - 1] || {}).total || 0;
+      const bt = (b.points[b.points.length - 1] || {}).total || 0;
+      return bt - at;
+    }).slice(0, 10);
+    const pts = list.flatMap(s => s.points);
+    const maxY = Math.max(10, ...pts.map(p => p.total || 0));
+    const pad = 40;
+    const colors = ['#5dd6ff', '#ffd166', '#3ddc97', '#ff5d7a', '#c9a0ff', '#f5c518', '#9ec1ff', '#ff9f68'];
+    list.forEach((s, si) => {
+      ctx.strokeStyle = colors[si % colors.length];
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      s.points.forEach((p, i) => {
+        const x = pad + (s.points.length < 2 ? 0 : i / (s.points.length - 1)) * (cssW - pad * 2);
+        const y = cssH - pad - ((p.total || 0) / maxY) * (cssH - pad * 2);
+        if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+    });
+  }
   function drawChart(svg, series) {
+    if (svg && svg.tagName === 'CANVAS') return drawChartCanvas(svg, series);
     const width = 920, height = 420, pad = 36;
     const list = (series || []).slice().sort((a, b) => {
       const at = (a.points[a.points.length - 1] || {}).total || 0;
