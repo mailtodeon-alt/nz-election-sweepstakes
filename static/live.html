@@ -17,12 +17,12 @@ body { overflow: hidden; }
 .leader-row.out { opacity: 0.45; filter: grayscale(0.4); }
 .leader-row .tag-out {
   display:inline-block; margin-left:8px; padding:2px 8px; border-radius:999px;
-  background:#3a1830; color:#ff8fab; font-size:11px; font-weight:800; letter-spacing:0.06em;
+  background:#3a1830; color:#ff8fab; font-size:0.72em; font-weight:800; letter-spacing:0.06em;
 }
 .leader-row .spoon {
-  display:inline-block; margin-left:8px; font-size:13px; color: var(--gold);
+  display:inline-block; margin-left:8px; font-size:0.85em; color: var(--gold);
 }
-.leader-row .bw { font-size:11px; color: var(--muted); margin-top: 2px; }
+.leader-row .bw { font-size:0.78em; color: var(--muted); margin-top: 2px; }
 #leaderTakeover {
   position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center;
   background: radial-gradient(circle at 50% 40%, rgba(255,209,102,.25), rgba(5,9,20,.92) 55%);
@@ -32,14 +32,12 @@ body { overflow: hidden; }
 #leaderTakeover .big { font-size: clamp(2rem, 7vw, 5rem); font-weight: 900; letter-spacing: -0.02em; }
 #leaderTakeover .sub { font-size: clamp(1rem, 2.5vw, 1.6rem); color: var(--gold); margin-top: 8px; font-weight: 800; }
 @keyframes popIn { from { opacity: 0; transform: scale(1.08); } to { opacity: 1; transform: scale(1); } }
-.sound-toggle { position: fixed; top: 10px; right: 12px; z-index: 60; font-size: 12px; opacity: 0.8; }
 </style>
 </head>
 <body>
 <div id="reactLayer" class="react-layer"></div>
-<button class="btn secondary sound-toggle" id="soundBtn" title="Toggle leader sound">🔊 Sound off</button>
 <div id="leaderTakeover"><div><div class="sub">NEW LEADER</div><div class="big" id="leaderName">—</div></div></div>
-<div class="tv" id="tv">
+<div class="tv pot-board" id="tv">
   <div class="tv-header">
     <div>
       <div class="row" style="gap:8px;margin-bottom:6px">
@@ -60,8 +58,9 @@ body { overflow: hidden; }
     <div class="tv-meta">
       <strong id="countdown">—</strong>
       <div>Entries / lock</div>
-      <div style="margin-top:8px">Reporting <strong id="reporting" style="display:inline;font-size:14px">—</strong></div>
+      <div style="margin-top:8px">Reporting <strong id="reporting" style="display:inline;font-size:1em">—</strong></div>
       <div>Updated <span id="updated">—</span></div>
+      <button class="btn secondary sound-toggle" id="soundBtn" title="Toggle leader sound" type="button">🔊 Sound off</button>
     </div>
   </div>
   <div class="board">
@@ -82,9 +81,9 @@ body { overflow: hidden; }
       <div class="prizes">
         <div class="prize"><div class="muted">1st</div><div class="amt" id="p1">$100</div></div>
         <div class="prize"><div class="muted">2nd</div><div class="amt" id="p2">$20</div></div>
-        <div class="prize"><div class="muted">Last</div><div class="amt" style="font-size:0.95rem;line-height:1.2" id="pLast">On morning dishes 🍽️</div></div>
+        <div class="prize"><div class="muted">Last</div><div class="amt" style="font-size:0.72em;line-height:1.15" id="pLast">On morning dishes 🍽️</div></div>
       </div>
-      <div class="card" style="margin:0;font-size:12px">
+      <div class="card" style="margin:0;font-size:0.82em">
         <span class="muted">PENDING questions are not scored as zero. Greyed rows are mathematically OUT.</span>
       </div>
     </div>
@@ -319,11 +318,12 @@ function render() {
     const r = resultForKey(p.key);
     const v = r ? parseFloat(r.value) : null;
     const src = r ? r.source : '';
-    const w = v != null && !Number.isNaN(v) ? Math.min(100, v * 2) : 0;
+    const known = v != null && !Number.isNaN(v);
+    const w = known ? Math.min(100, v * 2) : 0;
     return `<div class="party-bar">
       <div>${p.name}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${p.color}"></div></div>
-      <div style="text-align:right;font-family:var(--mono)">${v != null && !Number.isNaN(v) ? v.toFixed(1)+'%' : '—'}${src==='manual'?'*':''}</div>
+      <div class="bar-track${known ? '' : ' pending'}"><div class="bar-fill" style="width:${w}%;background:${p.color}"></div></div>
+      <div style="text-align:right;font-family:var(--mono)">${known ? v.toFixed(1)+'%' : 'pending'}${src==='manual'?'*':''}</div>
     </div>`;
   }).join('');
 
@@ -336,7 +336,7 @@ function render() {
     <div>Parties in Parliament: <strong>${parties?parties.value:'PENDING'}</strong></div>
     <div>NAT+ACT+NZF 61+: <strong>${bloc?bloc.value:'PENDING'}</strong></div>
     <div>Highest minor: <strong>${minor?minor.value:'PENDING'}</strong></div>
-    <div class="muted" style="margin-top:8px;font-size:11px">* = manual · seats include overhang · last place: On morning dishes 🍽️</div>`;
+    <div class="muted" style="margin-top:0.4em;font-size:0.82em">* = manual · seats include overhang · last place: On morning dishes 🍽️</div>`;
 }
 
 async function load() {

@@ -153,6 +153,7 @@ function render() {
   bar.setAttribute('aria-valuenow', String(answered));
   bar.setAttribute('aria-valuemax', String(qs.length));
   document.getElementById('stepNav').classList.toggle('hidden', !!state.locked);
+  document.getElementById('stepBack').disabled = !reviewing && step === 0;
   document.getElementById('watchLink').href = Sweep.isDemo ? '/demo/live' : '/live';
   document.getElementById('funBoardLink').href = Sweep.isDemo ? '/demo/open/live' : '/open/live';
 

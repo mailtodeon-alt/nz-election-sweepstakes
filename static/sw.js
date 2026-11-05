@@ -1,4 +1,4 @@
-const CACHE = 'sweep-shell-v2';
+const CACHE = 'sweep-shell-v3';
 const SHELL = [
   '/',
   '/join',

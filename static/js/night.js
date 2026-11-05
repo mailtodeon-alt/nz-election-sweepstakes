@@ -95,7 +95,7 @@ window.Night = (function () {
       '<div class="prize"><div class="muted">Pot avg</div><div class="amt">' + fmt(pot) + '</div><div class="muted">' + (pot.submitted || 0) + ' submitted</div></div>' +
       '<div class="prize"><div class="muted">Public avg</div><div class="amt">' + fmt(pub) + '</div><div class="muted">' + (pub.submitted || 0) + ' submitted</div></div>' +
       '</div>' +
-      '<p class="muted" style="margin:8px 0 0;font-size:12px">Main ballot only. Side bets are separate.</p>';
+      '<p class="muted" style="margin:0.35em 0 0;font-size:0.78em">Main ballot only. Side bets are separate.</p>';
   }
 
   function renderSideTable(box, bets, scores, { potOnlyTable }) {

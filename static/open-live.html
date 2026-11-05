@@ -17,9 +17,9 @@ body { overflow: hidden; }
 .leader-row.out { opacity: 0.45; filter: grayscale(0.4); }
 .leader-row .tag-out {
   display:inline-block; margin-left:8px; padding:2px 8px; border-radius:999px;
-  background:#3a1830; color:#ff8fab; font-size:11px; font-weight:800; letter-spacing:0.06em;
+  background:#3a1830; color:#ff8fab; font-size:0.72em; font-weight:800; letter-spacing:0.06em;
 }
-.leader-row .bw { font-size:11px; color: var(--muted); margin-top: 2px; }
+.leader-row .bw { font-size:0.78em; color: var(--muted); margin-top: 2px; }
 #leaderTakeover {
   position: fixed; inset: 0; z-index: 100; display: none; align-items: center; justify-content: center;
   background: radial-gradient(circle at 50% 40%, rgba(93,214,255,.18), rgba(5,9,20,.92) 55%);
@@ -49,7 +49,7 @@ body { overflow: hidden; }
     <div class="tv-meta">
       <strong id="countdown">—</strong>
       <div>Entries / lock</div>
-      <div style="margin-top:8px">Reporting <strong id="reporting" style="display:inline;font-size:14px">—</strong></div>
+      <div style="margin-top:8px">Reporting <strong id="reporting" style="display:inline;font-size:1em">—</strong></div>
       <div>Updated <span id="updated">—</span></div>
     </div>
   </div>
@@ -67,7 +67,7 @@ body { overflow: hidden; }
         <h3 style="margin-top:0">Derived calls</h3>
         <div id="seatsBox" class="muted">Awaiting results…</div>
       </div>
-      <div class="card" style="margin:0;font-size:12px">
+      <div class="card" style="margin:0;font-size:0.82em">
         <span class="muted">Same questions and scoring as the sweepstakes. Greyed rows are mathematically OUT. No prizes on this board.</span>
       </div>
     </div>
@@ -221,11 +221,12 @@ function render() {
     const r = resultForKey(p.key);
     const v = r ? parseFloat(r.value) : null;
     const src = r ? r.source : '';
-    const w = v != null && !Number.isNaN(v) ? Math.min(100, v * 2) : 0;
+    const known = v != null && !Number.isNaN(v);
+    const w = known ? Math.min(100, v * 2) : 0;
     return `<div class="party-bar">
       <div>${p.name}</div>
-      <div class="bar-track"><div class="bar-fill" style="width:${w}%;background:${p.color}"></div></div>
-      <div style="text-align:right;font-family:var(--mono)">${v != null && !Number.isNaN(v) ? v.toFixed(1)+'%' : '—'}${src==='manual'?'*':''}</div>
+      <div class="bar-track${known ? '' : ' pending'}"><div class="bar-fill" style="width:${w}%;background:${p.color}"></div></div>
+      <div style="text-align:right;font-family:var(--mono)">${known ? v.toFixed(1)+'%' : 'pending'}${src==='manual'?'*':''}</div>
     </div>`;
   }).join('');
 
@@ -238,7 +239,7 @@ function render() {
     <div>Parties in Parliament: <strong>${parties?parties.value:'PENDING'}</strong></div>
     <div>NAT+ACT+NZF 61+: <strong>${bloc?bloc.value:'PENDING'}</strong></div>
     <div>Highest minor: <strong>${minor?minor.value:'PENDING'}</strong></div>
-    <div class="muted" style="margin-top:8px;font-size:11px">* = manual entry</div>`;
+    <div class="muted" style="margin-top:0.4em;font-size:0.82em">* = manual entry</div>`;
 }
 
 async function load() {
