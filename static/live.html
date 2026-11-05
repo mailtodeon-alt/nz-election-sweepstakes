@@ -11,9 +11,21 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/static/icons/icon-192.png"/>
 <link rel="manifest" href="/manifest.webmanifest"/>
 <link rel="stylesheet" href="/static/css/app.css"/>
+<script>
+/* A fixed TV frame only for a real television, or when someone asks with ?tv=1. */
+(function () {
+  var q = new URLSearchParams(location.search);
+  var wide = window.matchMedia('(min-width: 1800px)');
+  function sync() {
+    document.documentElement.classList.toggle('tv-fit', q.get('tv') === '1' || wide.matches);
+  }
+  sync();
+  if (wide.addEventListener) wide.addEventListener('change', sync);
+})();
+</script>
 <style>
-body { overflow: hidden; }
-@media (max-width: 900px) { body { overflow: auto; } }
+html, body { overflow: auto; height: auto; }
+html.tv-fit, html.tv-fit body { overflow: hidden; height: 100%; }
 .leader-row.out { opacity: 0.45; filter: grayscale(0.4); }
 .leader-row .tag-out {
   display:inline-block; margin-left:8px; padding:2px 8px; border-radius:999px;
@@ -203,8 +215,8 @@ function renderLatest(latest) {
   const box = document.getElementById('latestBody');
   if (!box || !latest) return;
   const rows = (latest.players || []).map(p =>
-    '<div class="leader-row"><div class="name">' + p.name + '</div><div class="sub">' +
-    p.right + ' right · ' + p.adjacent + ' adjacent · ' + p.wrong + ' wrong · ' + p.pending + ' pending</div></div>'
+    '<div class="count-row"><div class="name">' + p.name + '</div><div class="sub">' +
+    p.right + ' right · ' + p.adjacent + ' close · ' + p.wrong + ' wrong · ' + p.pending + ' pending</div></div>'
   ).join('');
   const ticks = (latest.ticks || []).map(t => (t.reporting_pct || '—') + '% · ' + Sweep.formatWhen(t.at)).join('<br>');
   box.innerHTML = '<p class="muted">' + (latest.reporting_pct || '—') + '% counted · ' + Sweep.formatWhen(latest.at) + '</p>' + rows +

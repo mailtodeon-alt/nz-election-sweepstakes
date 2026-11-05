@@ -124,7 +124,27 @@ body:has(.tv) { padding: 0; }
 .tv .house-svg { display: block; width: 100%; height: auto; aspect-ratio: 200 / 112; max-height: 38vh; flex: 0 0 auto; }
 .tv .side-panel { height: auto; overflow: visible; flex: 0 0 auto; }
 .tv #beforeCount { flex: 0 0 auto; max-height: 24vh; overflow: auto; }
+.tv.pot-board #beforeCount { max-height: none; overflow: visible; }
 .tv #beforeCount .card { margin: 0; }
+/* /live scrolls as one page. The fixed frame is only for a TV. */
+.tv.pot-board {
+  height: auto; min-height: 100vh; min-height: 100dvh; overflow: visible;
+}
+.tv.pot-board .tv-stage {
+  flex: none; height: auto; min-height: auto; overflow: visible; align-items: start;
+}
+.tv.pot-board .tv-stage .board,
+.tv.pot-board .board,
+.tv.pot-board .leader-wrap,
+.tv.pot-board .tv-rail,
+.tv.pot-board .side-panel {
+  height: auto; min-height: auto; overflow: visible;
+}
+.tv.pot-board .leader-list {
+  display: flex; flex-direction: column; height: auto; overflow: visible;
+}
+.tv.pot-board .leader-row { height: auto; }
+.tv.pot-board .news-strip { overflow: visible; flex-wrap: wrap; }
 .tv.view-latest .tv-stage, .tv.view-estimate .tv-stage, .tv.view-ranks .tv-stage,
 .tv.view-latest #newsStrip, .tv.view-estimate #newsStrip, .tv.view-ranks #newsStrip { display: none; }
 @media (max-width: 900px) {
@@ -144,17 +164,8 @@ body:has(.tv) { padding: 0; }
   .board { grid-template-columns: 1fr; height: auto; }
 }
 .leader-list { display: flex; flex-direction: column; gap: clamp(6px, 0.45vw, 12px); min-height: 0; overflow: auto; }
-.tv.pot-board .leader-list {
-  display: grid;
-  grid-template-rows: repeat(6, minmax(0, 1fr));
-  gap: clamp(4px, 0.4vw, 14px);
-  flex: 1 1 auto;
-  min-height: 0;
-  height: auto;
-  overflow: hidden;
-}
 .leader-row {
-  display: grid; grid-template-columns: clamp(40px, 3vw, 72px) 1fr auto; gap: clamp(8px, 0.6vw, 16px); align-items: center;
+  display: grid; grid-template-columns: clamp(40px, 3vw, 72px) minmax(0, 1fr) auto; gap: clamp(8px, 0.6vw, 16px); align-items: center;
   background: linear-gradient(90deg, #132038, #0f1a30);
   border: 1px solid #243860; border-radius: clamp(10px, 0.8vw, 18px);
   padding: clamp(4px, 0.4vw, 12px) clamp(8px, 0.8vw, 18px);
@@ -162,7 +173,6 @@ body:has(.tv) { padding: 0; }
   transition: transform 0.45s cubic-bezier(.2,.8,.2,1), background 0.3s;
   will-change: transform;
 }
-.tv.pot-board .leader-row { height: 100%; }
 .leader-row.first {
   background: linear-gradient(90deg, #3a2a08, #1a1405);
   border-color: #8a6a20; box-shadow: 0 0 24px rgba(255, 209, 102, 0.15);
@@ -171,7 +181,24 @@ body:has(.tv) { padding: 0; }
   font-size: clamp(1.15rem, 1.5vw, 3rem); font-weight: 900; font-family: var(--mono); color: var(--accent); text-align: center;
 }
 .leader-row.first .pos { color: var(--gold); }
-.leader-row .name { font-size: clamp(1.05rem, 1.55vw, 3.4rem); font-weight: 800; line-height: 1.1; }
+.leader-row > * { min-width: 0; }
+.leader-row .name { font-size: clamp(1.05rem, 1.55vw, 3.4rem); font-weight: 800; line-height: 1.1; overflow-wrap: anywhere; }
+.count-row {
+  display: grid;
+  grid-template-columns: minmax(7rem, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: 4px 18px;
+  margin: 8px 0;
+  padding: 12px 14px;
+  background: #121c33;
+  border: 1px solid #243860;
+  border-radius: 12px;
+}
+.count-row .name { font-size: 1.35rem; font-weight: 800; line-height: 1.2; min-width: 0; }
+.count-row .sub { margin: 0; min-width: 0; font-size: 1rem; line-height: 1.35; }
+@media (max-width: 640px) {
+  .count-row { grid-template-columns: 1fr; gap: 2px; }
+}
 .leader-row .sub { color: var(--muted); font-size: clamp(12px, 0.9vw, 1.6rem); margin-top: 2px; }
 .leader-row .pts { font-size: clamp(1.35rem, 2.1vw, 4rem); font-weight: 900; font-family: var(--mono); line-height: 1; }
 .leader-row .delta { font-size: clamp(12px, 0.8vw, 1.3rem); color: var(--green); text-align: right; }
@@ -481,6 +508,54 @@ body:has(.tv) .burger-icon::after { background: #eef3ff; width: 22px; height: 3p
   .tv.pot-board .side-panel,
   .tv.pot-board .board,
   .tv.pot-board .leader-wrap { height: auto; overflow: visible; }
+  .tv.view-latest .tv-stage,
+  .tv.view-estimate .tv-stage,
+  .tv.view-ranks .tv-stage,
+  .tv.view-latest #newsStrip,
+  .tv.view-estimate #newsStrip,
+  .tv.view-ranks #newsStrip { display: none; }
+}
+html.tv-fit .tv.pot-board {
+  height: 100vh; height: 100dvh; min-height: 0; overflow: hidden;
+}
+html.tv-fit .tv.pot-board .tv-stage {
+  flex: 1 1 auto; min-height: 0; height: auto; overflow: hidden; align-items: stretch;
+}
+html.tv-fit .tv.pot-board .tv-stage .board,
+html.tv-fit .tv.pot-board .board,
+html.tv-fit .tv.pot-board .leader-wrap,
+html.tv-fit .tv.pot-board .tv-rail {
+  min-height: 0; overflow: hidden;
+}
+html.tv-fit .tv.pot-board .tv-stage .board,
+html.tv-fit .tv.pot-board .leader-wrap { height: 100%; }
+html.tv-fit .tv.pot-board .leader-list {
+  display: grid;
+  grid-template-rows: repeat(6, minmax(0, 1fr));
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+html.tv-fit .tv.pot-board .leader-row { height: 100%; }
+html.tv-fit .tv.pot-board .house-svg { max-height: 22vh; }
+html.tv-fit .tv.pot-board #beforeCount { max-height: none; overflow: visible; }
+html.tv-fit .tv.pot-board .before-count { padding: 8px 10px; font-size: 13px; }
+html.tv-fit .tv.pot-board .before-count h2,
+html.tv-fit .tv.pot-board .before-count h3 { font-size: 1rem; margin: 0 0 4px; }
+html.tv-fit .tv.pot-board .before-count p { margin: 0.2em 0; }
+html.tv-fit .tv.pot-board .timeline { margin-top: 4px; }
+html.tv-fit .tv.pot-board .timeline li { margin: 1px 0; }
+html.tv-fit .tv.pot-board .news-strip { flex-wrap: nowrap; overflow: hidden; }
+html.tv-fit:has(.tv.view-latest),
+html.tv-fit:has(.tv.view-estimate),
+html.tv-fit:has(.tv.view-ranks),
+html.tv-fit:has(.tv.view-latest) body,
+html.tv-fit:has(.tv.view-estimate) body,
+html.tv-fit:has(.tv.view-ranks) body { overflow: auto; height: auto; }
+html.tv-fit .tv.pot-board.view-latest,
+html.tv-fit .tv.pot-board.view-estimate,
+html.tv-fit .tv.pot-board.view-ranks {
+  height: auto; min-height: 100dvh; overflow: visible;
 }
 .news-strip a small, .news-list a.headline small { display: block; color: #b7c6e4; }
 .news-list { display: grid; gap: 10px; }
