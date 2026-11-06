@@ -114,7 +114,11 @@ body:has(.tv) { padding: 0; }
 .tv-stage {
   flex: 1 1 auto; min-height: 0; overflow: hidden;
   display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(380px, 0.9fr);
-  gap: clamp(10px, 1vw, 28px); align-items: stretch;
+  gap: clamp(10px, 1vw, 28px); grid-gap: clamp(10px, 1vw, 28px); align-items: stretch;
+}
+@supports not (gap: 1px) {
+  .leader-list .leader-row + .leader-row { margin-top: 6px; }
+  .tv-header > * + * { margin-left: 12px; }
 }
 .tv-stage .board { display: flex; flex-direction: column; min-height: 0; height: 100%; margin: 0; overflow: hidden; }
 .leader-wrap { min-height: 0; height: 100%; display: flex; flex-direction: column; }
@@ -468,7 +472,7 @@ body:has(.tv) .burger-icon::after { background: #eef3ff; width: 22px; height: 3p
 .house-card .muted { overflow-wrap: anywhere; }
 .house-label { font-weight: 800; font-size: clamp(1rem, 1.4vw, 1.7rem); margin: 0 0 2px; color: #eef3ff; }
 .house-meta, .house-card .muted { color: #b7c6e4; font-size: clamp(12px, .9vw, 16px); margin: 0 0 6px; }
-.house-svg { width: 100%; height: auto; display: block; }
+.house-svg { width: 100%; height: auto; min-height: 120px; display: block; }
 .tv .house-svg { max-height: 30vh; }
 @media (min-width: 1600px) { .tv .house-svg { max-height: 34vh; } }
 .house-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 6px; font-size: clamp(12px, .85vw, 16px); }
