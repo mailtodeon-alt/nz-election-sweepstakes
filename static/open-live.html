@@ -261,6 +261,15 @@ function paintList(board) {
   const list = document.getElementById('leaders');
   const note = document.getElementById('listNote');
   const toggle = document.getElementById('showAll');
+  const search = document.getElementById('playerSearch');
+  if (search) {
+    const showSearch = board.length > 10;
+    search.hidden = !showSearch;
+    if (!showSearch && query) {
+      query = '';
+      search.value = '';
+    }
+  }
   const rows = visibleRows(board);
   const mine = myId == null ? null : board.find((row) => row.player_id === myId);
   const place = mine ? mine._pos : null;

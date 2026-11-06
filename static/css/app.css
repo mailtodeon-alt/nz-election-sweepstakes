@@ -560,7 +560,7 @@ body:has(.tv) .burger-icon::after { background: #eef3ff; width: 22px; height: 3p
     flex-direction: row; align-items: center; gap: 6px; min-height: 32px;
   }
   .tv.pot-board .pane-head .pane-label {
-    flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    flex: 1 1 auto; min-width: 0; white-space: normal; overflow: visible; text-overflow: unset;
   }
   .tv.pot-board .public-half .public-tools { flex: 0 1 auto; flex-wrap: nowrap; gap: 4px; }
   .tv.pot-board .public-half .public-tools input {
