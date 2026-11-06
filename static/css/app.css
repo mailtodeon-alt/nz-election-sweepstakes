@@ -197,16 +197,24 @@ body:has(.tv) { padding: 0; }
 @media (max-width: 900px) {
   .board { grid-template-columns: 1fr; height: auto; }
 }
-.leader-list { display: flex; flex-direction: column; gap: clamp(6px, 0.45vw, 12px); min-height: 0; overflow: auto; }
+.leader-list { display: flex; flex-direction: column; min-height: 0; overflow: auto; }
+.leader-list .leader-row { margin-bottom: 8px; }
 .leader-row {
-  display: grid; grid-template-columns: clamp(40px, 3vw, 72px) minmax(0, 1fr) auto; gap: clamp(8px, 0.6vw, 16px); align-items: center;
+  display: block;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  overflow: hidden;
   background: linear-gradient(90deg, #132038, #0f1a30);
-  border: 1px solid #243860; border-radius: clamp(10px, 0.8vw, 18px);
-  padding: clamp(4px, 0.4vw, 12px) clamp(8px, 0.8vw, 18px);
-  min-height: 0; overflow: hidden;
+  border: 1px solid #243860; border-radius: 12px;
+  padding: 8px 12px;
+  min-height: 0;
   transition: transform 0.45s cubic-bezier(.2,.8,.2,1), background 0.3s;
   will-change: transform;
 }
+.leader-row > .pos { width: 2.6em; flex: 0 0 2.6em; text-align: center; }
+.leader-row > .pos + div { flex: 1 1 auto; min-width: 0; padding: 0 0.6em; }
+.leader-row > div:last-child { flex: 0 0 auto; text-align: right; padding-left: 0.5em; }
 .leader-row.first {
   background: linear-gradient(90deg, #3a2a08, #1a1405);
   border-color: #8a6a20; box-shadow: 0 0 24px rgba(255, 209, 102, 0.15);
@@ -663,87 +671,142 @@ html.tv-fit .tv.pot-board.view-ranks {
 @media (max-width: 640px) { .electorate { grid-template-columns: 1fr auto; } }
 .pin { min-height: 36px; padding: 6px 10px; }
 
-/* Room TV only. Desktop and phones stay on the rules above. */
+/* Room TV. Floats first, then flex, and no grid/gap/clamp: Tizen drops those and stacks the row. */
+html.tv-mode, html.tv-mode body { overflow: hidden; height: 100%; }
 html.tv-mode .tv.pot-board {
   height: 100vh; max-height: 100vh; overflow: hidden;
-  box-sizing: border-box; padding: 3vh 3vw;
-  display: flex; flex-direction: column;
+  box-sizing: border-box; padding: 2vh 3vw 1.5vh;
+  display: block;
+  display: flex;
+  flex-direction: column;
 }
 html.tv-mode .site-header,
 html.tv-mode .site-foot,
 html.tv-mode .sound-toggle,
 html.tv-mode .public-tools,
-html.tv-mode .burger { display: none; }
-html.tv-mode .tv.pot-board .week-tabs { pointer-events: none; }
-html.tv-mode .tv.pot-board .tv-header { padding-right: 0; }
-html.tv-mode .tv.pot-board .tv-title { font-size: 2.4vw; }
-html.tv-mode .tv.pot-board .tv-sub,
-html.tv-mode .tv.pot-board .tv-meta,
-html.tv-mode .tv.pot-board .pane-label,
+html.tv-mode .burger,
+html.tv-mode .tv.pot-board.view-board #newsStrip,
+html.tv-mode .tv.pot-board.view-board #houseHero,
+html.tv-mode .tv.pot-board.view-board #beforeCount,
+html.tv-mode .tv.pot-board.view-board #avgCard,
+html.tv-mode .tv.pot-board.view-board #sideCard,
+html.tv-mode .tv.pot-board.view-board #pendingNote { display: none; }
+html.tv-mode .tv.pot-board .week-tabs { pointer-events: none; margin: 0 0 0.4vh; }
 html.tv-mode .tv.pot-board .week-tabs button,
-html.tv-mode .tv.pot-board .week-tabs a.btn { font-size: 1.3vw; }
+html.tv-mode .tv.pot-board .week-tabs a.btn {
+  min-height: 0; padding: 0.2vh 0.55vw; margin: 0 0.35vw 0.25vh 0;
+  font-size: 1.15vw; line-height: 1.2;
+}
+html.tv-mode .tv.pot-board .tv-header {
+  display: block; overflow: hidden;
+  display: flex; justify-content: space-between; align-items: flex-start;
+  flex: 0 0 auto; padding: 0; margin: 0 0 0.6vh;
+}
+html.tv-mode .tv.pot-board .tv-head-main { overflow: hidden; padding-right: 1vw; }
+html.tv-mode .tv.pot-board .tv-meta { float: right; text-align: right; font-size: 1.15vw; }
+html.tv-mode .tv.pot-board .tv-meta strong { font-size: 1.6vw; }
+html.tv-mode .tv.pot-board .tv-title { font-size: 2.3vw; margin: 0; line-height: 1.05; }
+html.tv-mode .tv.pot-board .tv-sub { font-size: 1.15vw; margin: 0.2vh 0 0; }
+html.tv-mode .tv.pot-board .pane-label {
+  font-size: 1.2vw; line-height: 1.15; margin: 0 0 0.4vh;
+  white-space: normal; overflow: visible;
+}
 html.tv-mode .tv.pot-board .tv-stage {
-  display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
-  flex: 1 1 auto; min-height: 0; height: auto; overflow: hidden;
-  align-items: stretch;
+  display: block; overflow: hidden;
+  display: flex; flex-direction: row; align-items: stretch;
+  flex: 1 1 auto; min-height: 0; height: auto;
 }
 html.tv-mode .tv.pot-board .tv-stage .board {
-  display: grid; grid-template-columns: 1fr 1fr;
-  height: 100%; min-height: 0; overflow: hidden; gap: 0.6vw;
-}
-html.tv-mode .tv.pot-board .board-half,
-html.tv-mode .tv.pot-board .pot-half .leader-wrap,
-html.tv-mode .tv.pot-board .tv-rail {
-  min-height: 0; height: 100%; overflow: hidden;
-}
-html.tv-mode .tv.pot-board .board-half .leader-row {
-  height: auto; min-height: 0; max-height: none; padding: 0.15vh 0.4vw;
-}
-html.tv-mode .tv.pot-board .board-half .leader-row .name { font-size: 1.7vw; }
-html.tv-mode .tv.pot-board .board-half .leader-row .pos,
-html.tv-mode .tv.pot-board .board-half .leader-row .pts { font-size: 1.6vw; }
-html.tv-mode .tv.pot-board .board-half .leader-row .sub { font-size: 1vw; }
-html.tv-mode .tv.pot-board #leaders {
-  display: flex; flex-direction: column; justify-content: space-between;
+  display: block; float: left; width: 64%; margin: 0;
   height: 100%; overflow: hidden;
+  display: flex; flex-direction: row; align-items: stretch;
+  flex: 1 1 64%; min-width: 0;
 }
+html.tv-mode .tv.pot-board .board-half {
+  display: block; float: left; width: 48%; height: 100%;
+  margin: 0 2% 0 0; overflow: hidden; min-width: 0;
+  flex: 1 1 48%;
+}
+html.tv-mode .tv.pot-board .public-half { margin-right: 0; }
+html.tv-mode .tv.pot-board .leader-wrap,
+html.tv-mode .tv.pot-board .pot-half .leader-wrap { height: auto; overflow: hidden; }
+html.tv-mode .tv.pot-board .tv-rail {
+  display: block; float: right; width: 34%; height: 100%;
+  margin: 0; overflow: hidden; min-width: 0;
+  flex: 0 0 34%;
+}
+html.tv-mode .tv.pot-board .tv-rail .card {
+  padding: 0.5vh 0.6vw; margin: 0 0 0.6vh; font-size: 1.15vw;
+}
+html.tv-mode .tv.pot-board .tv-rail h3 { font-size: 1.2vw; margin: 0 0 0.3vh; }
+html.tv-mode .tv.pot-board .prizes { display: block; overflow: hidden; display: flex; }
+html.tv-mode .tv.pot-board .prize {
+  float: left; width: 31%; margin: 0 2% 0 0; padding: 0.4vh 0.3vw;
+  flex: 1 1 30%;
+}
+html.tv-mode .tv.pot-board .prize:last-child { margin-right: 0; }
+html.tv-mode .tv.pot-board .prize .amt { font-size: 1.35vw; }
+html.tv-mode .tv.pot-board .party-bar {
+  display: block; overflow: hidden; margin: 0 0 0.35vh; font-size: 1.05vw;
+}
+html.tv-mode .tv.pot-board .party-bar > * { display: inline-block; vertical-align: middle; }
+html.tv-mode .tv.pot-board #leaders,
 html.tv-mode .tv.pot-board #publicLeaders {
-  display: flex; flex-direction: column; justify-content: space-between;
-  flex: 1 1 auto; min-height: 0; height: auto; overflow: hidden; gap: 0;
+  display: block; height: auto; max-height: none; overflow: hidden;
 }
+html.tv-mode .tv.pot-board .leader-list .leader-row { margin-bottom: 0.35vh; }
+html.tv-mode .tv.pot-board .leader-row,
 html.tv-mode .tv.pot-board #leaders .leader-row,
-html.tv-mode .tv.pot-board #publicLeaders .leader-row { height: auto; flex: 1 1 auto; }
-html.tv-mode .tv .house-svg { height: 16vh; max-height: 16vh; width: 100%; }
-html.tv-mode .tv.pot-board .house-label { font-size: 1.4vw; }
-html.tv-mode .tv.pot-board #beforeCount { max-height: 12vh; overflow: hidden; }
-html.tv-mode .tv.pot-board.view-board #newsStrip { display: none; }
-html.tv-mode .tv.pot-board.view-board #view-latest {
-  display: block; margin: 0.3vh 0 0; padding: 0.2vh 0.5vw;
-  flex: 0 0 auto; min-height: 0; max-height: 26vh; overflow: hidden;
+html.tv-mode .tv.pot-board #publicLeaders .leader-row {
+  display: block; overflow: hidden;
+  display: flex; flex-direction: row; align-items: center;
+  flex: 0 0 auto; height: auto; min-height: 0; max-height: none;
+  padding: 0.15vh 0.4vw; box-shadow: none;
 }
-html.tv-mode .tv.pot-board.view-board #view-latest > p { display: none; }
-html.tv-mode .tv.pot-board.view-board .count-ticks { display: none; }
-html.tv-mode .tv.pot-board.view-board #view-latest,
-html.tv-mode .tv.pot-board.view-board .count-row,
-html.tv-mode .tv.pot-board.view-board #view-latest .muted { font-size: 1.35vw; }
-html.tv-mode .tv.pot-board.view-board #view-latest h3 { margin: 0; font-size: 1.2vw; }
-html.tv-mode .tv.pot-board.view-board #latestBody > .muted { margin: 0; }
-html.tv-mode .tv.pot-board.view-board .count-row {
-  display: grid; grid-template-columns: 9vw minmax(0, 1fr);
-  margin: 0; padding: 0; line-height: 1.1; white-space: nowrap;
+html.tv-mode .tv.pot-board .leader-row .pos,
+html.tv-mode .tv.pot-board .leader-row .pts { font-size: 1.45vw; line-height: 1.1; }
+html.tv-mode .tv.pot-board .leader-row .name,
+html.tv-mode .tv.pot-board .leader-row .sub,
+html.tv-mode .tv.pot-board .leader-row .tag-out,
+html.tv-mode .tv.pot-board .leader-row .spoon {
+  display: inline; font-size: 1.4vw; line-height: 1.1;
+  white-space: nowrap; vertical-align: middle;
 }
-html.tv-mode .tv.pot-board.view-board .count-row .name,
-html.tv-mode .tv.pot-board.view-board .count-row .sub { font-size: 1.15vw; line-height: 1.1; }
+html.tv-mode .tv.pot-board .leader-row .sub { margin: 0 0 0 0.4em; font-size: 1vw; }
+html.tv-mode .tv.pot-board .leader-row .bw,
+html.tv-mode .tv.pot-board .leader-row .delta { display: none; }
 html.tv-mode .leader-row,
 html.tv-mode .leader-row.first { transition: none; box-shadow: none; animation: none; }
+html.tv-mode .tv.pot-board #derivedCard { display: block !important; }
+html.tv-mode .tv.pot-board.view-board #view-latest {
+  display: block; clear: both; margin: 0.4vh 0 0; padding: 0.3vh 0.6vw;
+  max-height: 24vh; overflow: hidden; font-size: 1.05vw;
+  flex: 0 0 auto;
+}
+html.tv-mode .tv.pot-board.view-board #view-latest > p,
+html.tv-mode .tv.pot-board.view-board .count-ticks { display: none; }
+html.tv-mode .tv.pot-board.view-board #view-latest h3 { margin: 0; font-size: 1.2vw; }
+html.tv-mode .tv.pot-board.view-board .count-row {
+  display: block; overflow: hidden;
+  display: flex; flex-direction: row; align-items: center;
+  margin: 0; padding: 0; background: transparent; border: 0; white-space: nowrap;
+}
+html.tv-mode .tv.pot-board.view-board .count-row .name {
+  float: left; width: 8vw; font-size: 1.05vw; line-height: 1.05;
+  flex: 0 0 8vw;
+}
+html.tv-mode .tv.pot-board.view-board .count-row .sub {
+  overflow: hidden; font-size: 1vw; line-height: 1.05; margin: 0;
+  flex: 1 1 auto;
+}
+html.tv-mode .tv.pot-board.view-latest .tv-stage,
+html.tv-mode .tv.pot-board.view-estimate .tv-stage,
+html.tv-mode .tv.pot-board.view-ranks .tv-stage { display: none; }
 html.tv-mode .tv.pot-board.view-latest,
 html.tv-mode .tv.pot-board.view-estimate,
-html.tv-mode .tv.pot-board.view-ranks {
-  height: 100vh; overflow: hidden;
-}
+html.tv-mode .tv.pot-board.view-ranks { height: 100vh; overflow: hidden; }
 html.tv-mode .tv.pot-board.view-latest #view-latest,
 html.tv-mode .tv.pot-board.view-estimate #view-estimate,
 html.tv-mode .tv.pot-board.view-ranks #view-ranks {
-  display: block; overflow: hidden; font-size: 1.6vw;
+  display: block; overflow: hidden; max-height: 78vh; font-size: 1.6vw;
 }
