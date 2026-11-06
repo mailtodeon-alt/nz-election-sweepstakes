@@ -326,9 +326,52 @@ def play_page(token):
     return send_from_directory(ROOT / "static", "play.html")
 
 
+def _board_rows_html(conn, pool: str, limit: int | None = None) -> str:
+    """Static rows so the board is visible when the TV browser cannot run the app script."""
+    ranked, _questions, _players, _results = build_leaderboard(conn, pool=pool)
+    locked = D.entries_locked(conn)
+    rows = sorted(ranked, key=lambda row: (row.get("place") or row.get("rank") or 99, str(row.get("name") or "")))
+    if limit:
+        rows = rows[:limit]
+    parts = []
+    for i, row in enumerate(rows):
+        place = row.get("place") or row.get("rank") or (i + 1)
+        name = html.escape(html.unescape(str(row.get("name") or "")), quote=True)
+        sub = "Ballot in" if row.get("submitted") else "No ballot yet"
+        pts = str(row.get("total") if locked else "—")
+        first = " first" if place == 1 else ""
+        parts.append(
+            f'<div class="leader-row{first}">'
+            f'<div class="pos">{place}</div>'
+            f'<div><div class="name">{name}</div><div class="sub">{sub}</div></div>'
+            f'<div style="text-align:right"><div class="pts">{html.escape(pts)}</div></div>'
+            f"</div>"
+        )
+    return "".join(parts)
+
+
+def _live_html(demo: bool) -> Response:
+    raw = (ROOT / "static" / "live.html").read_text(encoding="utf-8")
+    conn = D.connect(demo)
+    try:
+        pot_rows = _board_rows_html(conn, D.POOL_POT)
+        public = build_leaderboard(conn, pool=D.POOL_PUBLIC)[0]
+        pub_rows = _board_rows_html(conn, D.POOL_PUBLIC, limit=10 if len(public) > 10 else None)
+    finally:
+        conn.close()
+    page = raw.replace("<!--POT_ROWS-->", pot_rows).replace("<!--PUBLIC_ROWS-->", pub_rows)
+    return Response(page, mimetype="text/html")
+
+
 @app.get("/live")
 def live_page():
-    return send_from_directory(ROOT / "static", "live.html")
+    return _live_html(use_demo())
+
+
+@app.get("/tv")
+def tv_live_page():
+    """Short path for a room TV. Same board as /live?tv=1, without a query string."""
+    return _live_html(use_demo())
 
 
 @app.get("/compare")
@@ -367,6 +410,7 @@ def demo_pages(rest):
     # Map /demo/live → live.html etc.
     mapping = {
         "live": "live.html",
+        "tv": "live.html",
         "compare": "compare.html",
         "join": "join.html",
         "admin": "admin.html",
@@ -379,6 +423,8 @@ def demo_pages(rest):
         "news": "news.html",
         "seats": "seats.html",
     }
+    if rest in ("live", "tv"):
+        return _live_html(True)
     if rest in mapping:
         return send_from_directory(ROOT / "static", mapping[rest])
     if rest.startswith("p/"):

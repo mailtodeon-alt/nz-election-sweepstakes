@@ -114,7 +114,11 @@ body:has(.tv) { padding: 0; }
 .tv-stage {
   flex: 1 1 auto; min-height: 0; overflow: hidden;
   display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(380px, 0.9fr);
-  gap: clamp(10px, 1vw, 28px); align-items: stretch;
+  gap: clamp(10px, 1vw, 28px); grid-gap: clamp(10px, 1vw, 28px); align-items: stretch;
+}
+@supports not (gap: 1px) {
+  .leader-list .leader-row + .leader-row { margin-top: 6px; }
+  .tv-header > * + * { margin-left: 12px; }
 }
 .tv-stage .board { display: flex; flex-direction: column; min-height: 0; height: 100%; margin: 0; overflow: hidden; }
 .leader-wrap { min-height: 0; height: 100%; display: flex; flex-direction: column; }
@@ -468,7 +472,7 @@ body:has(.tv) .burger-icon::after { background: #eef3ff; width: 22px; height: 3p
 .house-card .muted { overflow-wrap: anywhere; }
 .house-label { font-weight: 800; font-size: clamp(1rem, 1.4vw, 1.7rem); margin: 0 0 2px; color: #eef3ff; }
 .house-meta, .house-card .muted { color: #b7c6e4; font-size: clamp(12px, .9vw, 16px); margin: 0 0 6px; }
-.house-svg { width: 100%; height: auto; display: block; }
+.house-svg { width: 100%; height: auto; min-height: 120px; display: block; }
 .tv .house-svg { max-height: 30vh; }
 @media (min-width: 1600px) { .tv .house-svg { max-height: 34vh; } }
 .house-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 6px; font-size: clamp(12px, .85vw, 16px); }
@@ -658,3 +662,88 @@ html.tv-fit .tv.pot-board.view-ranks {
 .electorate { display: grid; grid-template-columns: 1.3fr .9fr auto auto; gap: 8px; padding: 10px 0; border-bottom: 1px solid #22345c; align-items: center; }
 @media (max-width: 640px) { .electorate { grid-template-columns: 1fr auto; } }
 .pin { min-height: 36px; padding: 6px 10px; }
+
+/* Room TV only. Desktop and phones stay on the rules above. */
+html.tv-mode .tv.pot-board {
+  height: 100vh; max-height: 100vh; overflow: hidden;
+  box-sizing: border-box; padding: 3vh 3vw;
+  display: flex; flex-direction: column;
+}
+html.tv-mode .site-header,
+html.tv-mode .site-foot,
+html.tv-mode .sound-toggle,
+html.tv-mode .public-tools,
+html.tv-mode .burger { display: none; }
+html.tv-mode .tv.pot-board .week-tabs { pointer-events: none; }
+html.tv-mode .tv.pot-board .tv-header { padding-right: 0; }
+html.tv-mode .tv.pot-board .tv-title { font-size: 2.4vw; }
+html.tv-mode .tv.pot-board .tv-sub,
+html.tv-mode .tv.pot-board .tv-meta,
+html.tv-mode .tv.pot-board .pane-label,
+html.tv-mode .tv.pot-board .week-tabs button,
+html.tv-mode .tv.pot-board .week-tabs a.btn { font-size: 1.3vw; }
+html.tv-mode .tv.pot-board .tv-stage {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+  flex: 1 1 auto; min-height: 0; height: auto; overflow: hidden;
+  align-items: stretch;
+}
+html.tv-mode .tv.pot-board .tv-stage .board {
+  display: grid; grid-template-columns: 1fr 1fr;
+  height: 100%; min-height: 0; overflow: hidden; gap: 0.6vw;
+}
+html.tv-mode .tv.pot-board .board-half,
+html.tv-mode .tv.pot-board .pot-half .leader-wrap,
+html.tv-mode .tv.pot-board .tv-rail {
+  min-height: 0; height: 100%; overflow: hidden;
+}
+html.tv-mode .tv.pot-board .board-half .leader-row {
+  height: auto; min-height: 0; max-height: none; padding: 0.15vh 0.4vw;
+}
+html.tv-mode .tv.pot-board .board-half .leader-row .name { font-size: 1.7vw; }
+html.tv-mode .tv.pot-board .board-half .leader-row .pos,
+html.tv-mode .tv.pot-board .board-half .leader-row .pts { font-size: 1.6vw; }
+html.tv-mode .tv.pot-board .board-half .leader-row .sub { font-size: 1vw; }
+html.tv-mode .tv.pot-board #leaders {
+  display: flex; flex-direction: column; justify-content: space-between;
+  height: 100%; overflow: hidden;
+}
+html.tv-mode .tv.pot-board #publicLeaders {
+  display: flex; flex-direction: column; justify-content: space-between;
+  flex: 1 1 auto; min-height: 0; height: auto; overflow: hidden; gap: 0;
+}
+html.tv-mode .tv.pot-board #leaders .leader-row,
+html.tv-mode .tv.pot-board #publicLeaders .leader-row { height: auto; flex: 1 1 auto; }
+html.tv-mode .tv .house-svg { height: 16vh; max-height: 16vh; width: 100%; }
+html.tv-mode .tv.pot-board .house-label { font-size: 1.4vw; }
+html.tv-mode .tv.pot-board #beforeCount { max-height: 12vh; overflow: hidden; }
+html.tv-mode .tv.pot-board.view-board #newsStrip { display: none; }
+html.tv-mode .tv.pot-board.view-board #view-latest {
+  display: block; margin: 0.3vh 0 0; padding: 0.2vh 0.5vw;
+  flex: 0 0 auto; min-height: 0; max-height: 26vh; overflow: hidden;
+}
+html.tv-mode .tv.pot-board.view-board #view-latest > p { display: none; }
+html.tv-mode .tv.pot-board.view-board .count-ticks { display: none; }
+html.tv-mode .tv.pot-board.view-board #view-latest,
+html.tv-mode .tv.pot-board.view-board .count-row,
+html.tv-mode .tv.pot-board.view-board #view-latest .muted { font-size: 1.35vw; }
+html.tv-mode .tv.pot-board.view-board #view-latest h3 { margin: 0; font-size: 1.2vw; }
+html.tv-mode .tv.pot-board.view-board #latestBody > .muted { margin: 0; }
+html.tv-mode .tv.pot-board.view-board .count-row {
+  display: grid; grid-template-columns: 9vw minmax(0, 1fr);
+  margin: 0; padding: 0; line-height: 1.1; white-space: nowrap;
+}
+html.tv-mode .tv.pot-board.view-board .count-row .name,
+html.tv-mode .tv.pot-board.view-board .count-row .sub { font-size: 1.15vw; line-height: 1.1; }
+html.tv-mode .leader-row,
+html.tv-mode .leader-row.first { transition: none; box-shadow: none; animation: none; }
+html.tv-mode .tv.pot-board.view-latest,
+html.tv-mode .tv.pot-board.view-estimate,
+html.tv-mode .tv.pot-board.view-ranks {
+  height: 100vh; overflow: hidden;
+}
+html.tv-mode .tv.pot-board.view-latest #view-latest,
+html.tv-mode .tv.pot-board.view-estimate #view-estimate,
+html.tv-mode .tv.pot-board.view-ranks #view-ranks {
+  display: block; overflow: hidden; font-size: 1.6vw;
+}

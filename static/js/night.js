@@ -51,7 +51,7 @@ window.Night = (function () {
       btn.onclick = async () => {
         btn.disabled = true;
         try { await sendReaction(emoji, token); }
-        catch (e) { Sweep.toast(e.data?.message || e.message); }
+        catch (e) { Sweep.toast((e.data && e.data.message) || e.message); }
         setTimeout(() => { btn.disabled = false; }, 1000);
       };
       container.appendChild(btn);
@@ -139,8 +139,10 @@ window.Night = (function () {
       const bt = (b.points[b.points.length - 1] || {}).total || 0;
       return bt - at;
     }).slice(0, 10);
-    const pts = list.flatMap(s => s.points);
-    const maxY = Math.max(10, ...pts.map(p => p.total || 0));
+    var pts = [];
+    list.forEach(function (s) { (s.points || []).forEach(function (p) { pts.push(p); }); });
+    var maxY = 10;
+    pts.forEach(function (p) { if ((p.total || 0) > maxY) maxY = p.total; });
     const pad = 40;
     const colors = ['#5dd6ff', '#ffd166', '#3ddc97', '#ff5d7a', '#c9a0ff', '#f5c518', '#9ec1ff', '#ff9f68'];
     list.forEach((s, si) => {
@@ -163,8 +165,10 @@ window.Night = (function () {
       const bt = (b.points[b.points.length - 1] || {}).total || 0;
       return bt - at;
     }).slice(0, 10);
-    const pts = list.flatMap(s => s.points);
-    const maxY = Math.max(10, ...pts.map(p => p.total || 0));
+    var pts = [];
+    list.forEach(function (s) { (s.points || []).forEach(function (p) { pts.push(p); }); });
+    var maxY = 10;
+    pts.forEach(function (p) { if ((p.total || 0) > maxY) maxY = p.total; });
     const xs = pts.map(p => parseFloat(p.reporting_pct));
     const usePct = xs.length && xs.every(n => !Number.isNaN(n) && n > 0);
     const maxX = usePct ? Math.max(100, ...xs) : Math.max(1, ...list.map(s => s.points.length - 1));
