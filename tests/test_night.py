@@ -20,11 +20,19 @@ sys.path.insert(0, str(ROOT))
 from app import app  # noqa: E402
 import db as D  # noqa: E402
 import sweepstakes_flask as S  # noqa: E402
-from feed import parse_election_xml  # noqa: E402
+from feed import (  # noqa: E402
+    election_uses_pno,
+    is_precount_placeholder,
+    parse_election_xml,
+    parties_from_xml,
+    parties_url_for,
+)
 from scoring import score_question  # noqa: E402
 
 CLIENT = app.test_client()
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "election_2023.xml"
+FIXTURE_2026 = Path(__file__).resolve().parent / "fixtures" / "election_2026.xml"
+PARTIES_2026 = Path(__file__).resolve().parent / "fixtures" / "parties_2026.xml"
 
 ACTUAL = {
     "nat_vote": "35.0",
@@ -358,6 +366,189 @@ def test_feed_fixture_and_manual_override():
     assert nat["value"] == "1.0"
 
 
+def _counted_2026_xml() -> bytes:
+    """Same 2026 shape as the live file, with a partial count filled in."""
+    return b"""<?xml version="1.0" encoding="UTF-8"?>
+<election>
+  <statistics>
+    <percent_voting_places_counted>18.5</percent_voting_places_counted>
+  </statistics>
+  <partystatus>
+    <party p_no="16"><votes>400000</votes><percent_votes>40.0</percent_votes><candidate_seats>30</candidate_seats><total_seats>40</total_seats></party>
+    <party p_no="13"><votes>280000</votes><percent_votes>28.0</percent_votes><candidate_seats>20</candidate_seats><total_seats>32</total_seats></party>
+    <party p_no="10"><votes>120000</votes><percent_votes>12.0</percent_votes><total_seats>15</total_seats></party>
+    <party p_no="5"><votes>80000</votes><percent_votes>8.0</percent_votes><total_seats>10</total_seats></party>
+    <party p_no="17"><votes>70000</votes><percent_votes>7.0</percent_votes><total_seats>8</total_seats></party>
+    <party p_no="14"><votes>30000</votes><percent_votes>3.0</percent_votes><total_seats>4</total_seats></party>
+    <party p_no="24"><votes>20000</votes><percent_votes>2.0</percent_votes><total_seats>2</total_seats></party>
+  </partystatus>
+</election>
+"""
+
+
+def test_2026_feed_joins_parties_and_skips_placeholder():
+    """Live 2026 XML is p_no only. Names come from parties.xml. Zeros are not saved."""
+    assert D.DEFAULT_SETTINGS["feed_enabled"] == "0"
+    assert parties_url_for("https://media.election.net.nz/xml/") == "https://media.election.net.nz/xml/parties.xml"
+    assert parties_url_for("https://media.election.net.nz/xml/election.xml") == "https://media.election.net.nz/xml/parties.xml"
+
+    election = FIXTURE_2026.read_bytes()
+    parties = PARTIES_2026.read_bytes()
+    assert election_uses_pno(election) is True
+    named = parties_from_xml(parties)
+    assert named["16"] == "National"
+    assert named["13"] == "Labour"
+    assert named["10"] == "Green"
+    assert named["5"] == "ACT"
+    assert named["17"] == "NZ First"
+    assert named["14"] == "Te Pāti Māori"
+    assert named["24"] == "TOP"
+
+    lone = b"""<?xml version="1.0"?><election><partystatus>
+      <party p_no="99"><percent_votes>41.2</percent_votes><total_seats>50</total_seats></party>
+    </partystatus><statistics><percent_voting_places_counted>10</percent_voting_places_counted></statistics></election>"""
+    lone_parties = b"""<?xml version="1.0"?><parties><party p_no="99">
+      <short_name>National Party</short_name><party_name>National Party</party_name><registered>yes</registered>
+    </party></parties>"""
+    assert parse_election_xml(lone).get("ok") is False
+    joined = parse_election_xml(lone, lone_parties)
+    assert joined["ok"] is True
+    assert joined["votes"]["National"] == 41.2
+    assert joined["seats"]["National"] == 50
+    assert joined["values"]["nat_vote"] == 41.2
+    assert joined["values"]["nat_seats"] == 50
+
+    parsed = parse_election_xml(election, parties)
+    assert parsed["ok"] is True
+    assert parsed["reporting_pct"] == 0.0
+    for party in ("National", "Labour", "Green", "ACT", "NZ First", "Te Pāti Māori", "TOP"):
+        assert parsed["votes"][party] == 0.0
+        assert parsed["seats"][party] == 0
+    assert parsed["values"]["nat_vote"] == 0.0
+    assert parsed["values"]["lab_seats"] == 0
+    assert is_precount_placeholder(parsed) is True
+
+    missing_reporting = b"""<election><partystatus>
+      <party p_no="16"><percent_votes>0</percent_votes><total_seats>0</total_seats></party>
+    </partystatus></election>"""
+    missing = parse_election_xml(missing_reporting, parties)
+    assert missing["reporting_pct"] is None
+    assert is_precount_placeholder(missing) is True
+
+    counted = parse_election_xml(_counted_2026_xml(), parties)
+    assert is_precount_placeholder(counted) is False
+    assert counted["reporting_pct"] == 18.5
+    assert counted["values"]["most_seats"] == "National"
+    assert counted["values"]["parties_in"] == 7
+    assert counted["values"]["bloc_61"] == "No"
+    assert counted["values"]["minor_highest"] == "Green"
+    assert counted["seats"]["TOP"] == 2
+
+    wipe()
+    conn = D.connect(False)
+    try:
+        assert D.get_setting(conn, "feed_enabled") == "0"
+    finally:
+        conn.close()
+    qs = {q["key"]: q for q in questions()}
+    expect(CLIENT.post("/api/admin/results", json={"results": {str(qs["nat_vote"]["id"]): "1.0"}, "source": "manual"}), 200)
+    skipped = S.feed_poller.poll_once(body=election, parties_body=parties, apply=True)
+    assert skipped["ok"] is True
+    assert skipped["applied"] == []
+    assert skipped["skipped"] == "precount_placeholder"
+    conn = D.connect(False)
+    try:
+        nat = conn.execute("SELECT value, source FROM results WHERE question_id=?", (qs["nat_vote"]["id"],)).fetchone()
+        lab = conn.execute("SELECT value FROM results WHERE question_id=?", (qs["lab_vote"]["id"],)).fetchone()
+        reporting = D.get_setting(conn, "reporting_pct")
+        enabled = D.get_setting(conn, "feed_enabled")
+    finally:
+        conn.close()
+    assert nat["value"] == "1.0" and nat["source"] == "manual"
+    assert lab is None
+    assert reporting in ("", None)
+    assert enabled == "0"
+
+    applied = S.feed_poller.poll_once(body=_counted_2026_xml(), parties_body=parties, apply=True)
+    assert applied["ok"] is True
+    assert "nat_vote" not in applied["applied"]
+    assert "lab_vote" in applied["applied"]
+    assert "parties_in" in applied["applied"]
+    conn = D.connect(False)
+    try:
+        nat = conn.execute("SELECT value, source FROM results WHERE question_id=?", (qs["nat_vote"]["id"],)).fetchone()
+        lab = conn.execute("SELECT value, source FROM results WHERE question_id=?", (qs["lab_vote"]["id"],)).fetchone()
+        parties_in = conn.execute("SELECT value, source FROM results WHERE question_id=?", (qs["parties_in"]["id"],)).fetchone()
+        reporting = D.get_setting(conn, "reporting_pct")
+        counts = D.get_setting(conn, "vote_counts_json")
+    finally:
+        conn.close()
+    assert nat["value"] == "1.0" and nat["source"] == "manual"
+    assert lab["value"] == "28.0" and lab["source"] == "auto"
+    assert parties_in["value"] == "7" and parties_in["source"] == "auto"
+    assert reporting == "18.5"
+    assert "400000" in counts
+
+    again = S.feed_poller.poll_once(body=election, parties_body=parties, apply=True)
+    assert again["applied"] == []
+    assert again["skipped"] == "precount_placeholder"
+    conn = D.connect(False)
+    try:
+        lab = conn.execute("SELECT value, source FROM results WHERE question_id=?", (qs["lab_vote"]["id"],)).fetchone()
+        nat = conn.execute("SELECT value, source FROM results WHERE question_id=?", (qs["nat_vote"]["id"],)).fetchone()
+        reporting = D.get_setting(conn, "reporting_pct")
+        counts = D.get_setting(conn, "vote_counts_json")
+    finally:
+        conn.close()
+    assert lab["value"] == "28.0" and lab["source"] == "auto"
+    assert nat["value"] == "1.0" and nat["source"] == "manual"
+    assert reporting == "18.5"
+    assert "400000" in counts
+
+
+def test_parties_xml_is_cached_for_pno_feeds():
+    import feed as F
+    from unittest.mock import patch
+
+    election = FIXTURE_2026.read_bytes()
+    parties = PARTIES_2026.read_bytes()
+    calls = []
+
+    def fake_election(url):
+        return election, url.rstrip("/") + "/election.xml", None
+
+    def fake_fetch(url):
+        calls.append(url)
+        if url.endswith("/parties.xml"):
+            return parties
+        return None
+
+    conn = D.connect(False)
+    try:
+        D.set_setting(conn, "feed_url", "https://media.election.net.nz/xml/")
+        conn.commit()
+    finally:
+        conn.close()
+    S.feed_poller._parties_cache.clear()
+    with patch.object(F, "fetch_election", fake_election), patch.object(F, "fetch_url", fake_fetch):
+        first = S.feed_poller.poll_once(apply=False)
+        second = S.feed_poller.poll_once(apply=False)
+        injected = S.feed_poller.poll_once(body=election, apply=False)
+    party_fetches = [u for u in calls if u.endswith("/parties.xml")]
+    assert party_fetches == ["https://media.election.net.nz/xml/parties.xml"]
+    assert first["ok"] is True and first["placeholder"] is True
+    assert first["votes"]["National"] == 0.0
+    assert first["votes"]["TOP"] == 0.0
+    assert second["ok"] is True and second["votes"]["Labour"] == 0.0
+    assert injected["ok"] is True
+    assert injected["placeholder"] is True
+    conn = D.connect(False)
+    try:
+        assert D.get_setting(conn, "feed_enabled") == "0"
+    finally:
+        conn.close()
+
+
 def test_demo_previews_features_without_touching_real_rows():
     wipe()
     before = [(p["id"], p["token"], p["name"], p["tb_national_vote"]) for p in pot_by_slot().values()]
@@ -395,6 +586,8 @@ def main():
     test_ticker_rules()
     test_averages_count_submitted_only()
     test_feed_fixture_and_manual_override()
+    test_2026_feed_joins_parties_and_skips_placeholder()
+    test_parties_xml_is_cached_for_pno_feeds()
     test_demo_previews_features_without_touching_real_rows()
     backend = "postgres" if D.using_postgres() else "sqlite"
     print(f"NIGHT TESTS OK ({backend})")

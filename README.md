@@ -56,7 +56,7 @@ Preview everything on the demo TV first: Admin → **Reset demo DB**, then **Dem
 | Score chart | **Chart** on `/live` and `/open/live` (`?view=history`). | A point is stored when results are saved. The axis is % counted when that was entered. Public chart shows at most 10 lines. |
 | Ticker | Bottom of both boards. Players post from their ballot (80 characters, one a minute). | Public lines stay on `/open/live` unless you press **Feature on TV**. Hide, delete, or switch the ticker off in admin. |
 | Group vs public | Panel on both boards. | Average of the main ballot for people who submitted. Side bets are not in this average. |
-| Results feed | Admin → Results feed. Leave it **off** until the XML is live. | **Dry run / preview** fetches votes and seats and does not save them. Manual numbers always win. A bad or empty fetch does not clear what you typed. New databases default to a 3 minute interval; an existing database keeps its saved interval (often 90) until you change it. |
+| Results feed | Admin → Results feed. Leave it **off** until the XML is live. | **Dry run / preview** fetches votes and seats and does not save them. The 2026 file names parties by number; `parties.xml` supplies the names. A pre-count file (0% counted and all zeros) is not saved. Manual numbers always win. A bad or empty fetch does not clear what you typed. New databases default to a 3 minute interval; an existing database keeps its saved interval (often 90) until you change it. |
 
 ## After election night
 
