@@ -102,7 +102,7 @@ window.Sweep = (function () {
     const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(raw);
     const d = new Date(dateOnly ? raw + 'T12:00:00+13:00' : raw);
     if (isNaN(d.getTime())) return raw;
-    const parts = new Intl.DateTimeFormat('en-NZ', {
+    const fmt = new Intl.DateTimeFormat('en-NZ', {
       timeZone: 'Pacific/Auckland',
       weekday: 'long',
       day: 'numeric',
@@ -111,7 +111,9 @@ window.Sweep = (function () {
       hour: 'numeric',
       minute: '2-digit',
       hour12: true,
-    }).formatToParts(d);
+    });
+    if (!fmt.formatToParts) return fmt.format(d);
+    const parts = fmt.formatToParts(d);
     const get = (type) => (parts.find((p) => p.type === type) || {}).value || '';
     const clock = (get('hour') + ':' + get('minute') + (get('dayPeriod') || '')).replace(/\s/g, '').toLowerCase();
     if (style === 'date' || (dateOnly && style !== 'datetime')) {
@@ -130,8 +132,9 @@ window.Sweep = (function () {
     const h = Math.floor((s % 86400) / 3600);
     const m = Math.floor((s % 3600) / 60);
     const sec = s % 60;
-    if (d > 0) return `${d}d ${h}h ${m}m`;
-    return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(sec).padStart(2,'0')}`;
+    function two(n) { return (n < 10 ? '0' : '') + n; }
+    if (d > 0) return d + 'd ' + h + 'h ' + m + 'm';
+    return two(h) + ':' + two(m) + ':' + two(sec);
   }
   function boardLabel(mode) {
     if (mode === 'frozen') return { text: 'FROZEN ELECTION NIGHT', cls: 'frozen' };

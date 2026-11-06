@@ -127,7 +127,8 @@ window.PublicBoard = (function () {
           else delta = '<div class="delta" style="color:var(--muted)">—</div>';
         }
         const outTag = (locked && row.still_in_it === false) ? '<span class="tag-out">OUT</span>' : '';
-        const maxBits = locked ? ' · max ' + (row.max_possible_now ?? '—') : '';
+        var maxNow = row.max_possible_now;
+        const maxBits = locked ? ' · max ' + (maxNow == null ? '—' : maxNow) : '';
         let bw = '';
         if (locked && (row.best_call || row.worst_call)) {
           const b = row.best_call ? 'Best: ' + row.best_call.label + ' (+' + row.best_call.points + ')' : '';

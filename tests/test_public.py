@@ -155,6 +155,11 @@ def test_pages():
     assert "Copy link" in opened
     live = expect(CLIENT.get("/live"), 200)
     assert 'class="tv-head-main"' in live
+    assert "SMART-TV" in live
+    assert "tv=1" in live
+    tv = expect(CLIENT.get("/tv"), 200)
+    assert "NZ Election Night Sweepstakes" in tv or "tv-title" in tv
+    assert "SMART-TV" in tv
     assert "Public leaderboard" in live
     open_live = expect(CLIENT.get("/open/live"), 200)
     assert "Show all" in open_live

@@ -331,6 +331,12 @@ def live_page():
     return send_from_directory(ROOT / "static", "live.html")
 
 
+@app.get("/tv")
+def tv_live_page():
+    """Short path for a room TV. Same board as /live?tv=1, without a query string."""
+    return send_from_directory(ROOT / "static", "live.html")
+
+
 @app.get("/compare")
 def compare_page():
     return send_from_directory(ROOT / "static", "compare.html")
@@ -367,6 +373,7 @@ def demo_pages(rest):
     # Map /demo/live → live.html etc.
     mapping = {
         "live": "live.html",
+        "tv": "live.html",
         "compare": "compare.html",
         "join": "join.html",
         "admin": "admin.html",
