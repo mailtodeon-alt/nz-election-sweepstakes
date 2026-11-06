@@ -58,6 +58,14 @@ window.PublicBoard = (function () {
       return top.concat([{ _gap: true }, mine]);
     }
     function paint() {
+      if (search) {
+        const showSearch = board.length > 10;
+        search.hidden = !showSearch;
+        if (!showSearch && query) {
+          query = '';
+          search.value = '';
+        }
+      }
       const rows = visibleRows();
       const mine = myId == null ? null : board.find((row) => row.player_id === myId);
       const place = mine ? mine._pos : null;
