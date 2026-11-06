@@ -2,8 +2,12 @@
 
 Results XML stays off until lock time (7pm NZDT on the configured lock_at,
 default Sat 7 Nov 2026), then turns itself on at a 180s interval with backoff.
-Advance voting is polled about every 30 minutes until that lock. Headlines
-refresh about every 5 minutes. A failed fetch never clears the last good value.
+The 2026 media file identifies parties by p_no only; names are joined from
+parties.xml on the same base URL and cached. A pre-count document (nothing
+counted, every mapped figure zero) is not written as AUTO. Manual results
+are never overwritten. Advance voting is polled about every 30 minutes until
+lock. Headlines refresh about every 5 minutes. A failed fetch never clears
+the last good value.
 """
 from __future__ import annotations
 import json
@@ -22,7 +26,8 @@ import db as D
 import newsfeed as NEWS
 
 
-# Known 2026 live media feed (community-documented; 404 until election night).
+# Live 2026 media feed. election.xml parties are p_no only; names are in parties.xml.
+# The poller stays off until lock time (feed_enabled defaults to 0).
 DEFAULT_FEED = "https://media.election.net.nz/xml/"
 ARCHIVE_2023 = "https://archive.electionresults.govt.nz/electionresults_2023/xml/"
 
@@ -79,6 +84,10 @@ CANONICAL = {
     "top": "TOP",
     "the opportunities party (top)": "TOP",
     "the opportunities party": "TOP",
+    # 2026 parties.xml short_name is "Opportunity Party" (abbrev OPP), not TOP.
+    "opportunity": "TOP",
+    "opportunity party": "TOP",
+    "the opportunity party": "TOP",
 }
 
 
@@ -92,6 +101,8 @@ class FeedPoller:
         self._results_next = 0.0
         self._advance_next = 0.0
         self._news_next = 0.0
+        # parties.xml is stable on the night; keyed by its URL.
+        self._parties_cache: dict[str, bytes] = {}
 
     def start(self):
         if self._thread and self._thread.is_alive():
@@ -248,13 +259,17 @@ class FeedPoller:
             used = None
             electorates_body = None
             if body is None:
-                body, parties_body, used, err = fetch_feed(url)
+                body, used, err = fetch_election(url)
                 if body is None:
                     conn.execute("UPDATE feed_status SET last_error=? WHERE id=1", ((err or "no response")[:500],))
                     conn.commit()
                     return {"ok": False, "reason": err or "no response", "votes": {}, "seats": {}}
                 if used:
                     electorates_body = fetch_url(used.rsplit("/", 1)[0] + "/electorates.xml")
+
+            if parties_body is None and body and election_uses_pno(body):
+                # Same directory as feed_url / the election document. Cached after a good fetch.
+                parties_body = self._parties_body(used or url, allow_network=used is not None)
 
             parsed = parse_election_xml(body, parties_body, electorates_body)
             if not parsed.get("ok"):
@@ -267,15 +282,42 @@ class FeedPoller:
                 parsed["seats"] = parsed.get("seats") or {}
                 return parsed
 
+            placeholder = is_precount_placeholder(parsed)
             if not apply:
                 return {
                     "ok": True,
                     "preview": True,
                     "applied": False,
+                    "placeholder": placeholder,
                     "url": used,
                     "votes": parsed.get("votes") or {},
                     "seats": parsed.get("seats") or {},
                     "values": parsed.get("values") or {},
+                    "reporting_pct": parsed.get("reporting_pct"),
+                }
+
+            if placeholder:
+                # Pre-count file: 0% counted and every mapped figure is zero.
+                # Do not write AUTO results, reporting %, or the house JSON.
+                summary = json.dumps({
+                    "url": used,
+                    "applied": [],
+                    "skipped": "precount_placeholder",
+                    "reporting": parsed.get("reporting_pct"),
+                })
+                conn.execute(
+                    "UPDATE feed_status SET last_success_at=?, last_error=NULL, last_payload_summary=? WHERE id=1",
+                    (D.iso_now(), summary),
+                )
+                conn.commit()
+                return {
+                    "ok": True,
+                    "applied": [],
+                    "skipped": "precount_placeholder",
+                    "placeholder": True,
+                    "url": used,
+                    "votes": parsed.get("votes") or {},
+                    "seats": parsed.get("seats") or {},
                     "reporting_pct": parsed.get("reporting_pct"),
                 }
 
@@ -333,6 +375,19 @@ class FeedPoller:
         finally:
             conn.close()
 
+    def _parties_body(self, base_url: str, *, allow_network: bool) -> Optional[bytes]:
+        """parties.xml for this feed base. Reuse a cached copy that named at least one party."""
+        parties_url = parties_url_for(base_url)
+        cached = self._parties_cache.get(parties_url)
+        if cached is not None:
+            return cached
+        if not allow_network:
+            return None
+        fetched = fetch_url(parties_url)
+        if fetched and parties_from_xml(fetched):
+            self._parties_cache[parties_url] = fetched
+        return fetched
+
 
 def _norm(s: str) -> str:
     return " ".join((s or "").lower().replace("ā", "a").replace("ī", "i").replace("ū", "u").split())
@@ -360,19 +415,69 @@ def parties_from_xml(body: bytes) -> dict[str, str]:
     return out
 
 
-def fetch_feed(url: str) -> tuple[Optional[bytes], Optional[bytes], Optional[str], Optional[str]]:
-    """Return (election_xml, parties_xml, url_used, error)."""
+def parties_url_for(feed_url: str) -> str:
+    """parties.xml beside election.xml, or under a directory feed base."""
+    base = (feed_url or "").strip() or DEFAULT_FEED
+    if base.endswith(".xml"):
+        return base.rsplit("/", 1)[0] + "/parties.xml"
+    return base.rstrip("/") + "/parties.xml"
+
+
+def election_uses_pno(body: bytes) -> bool:
+    """True when a party node is identified only by p_no (the 2026 media shape)."""
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        return False
+    for el in root.iter():
+        if el.tag.split("}")[-1].lower() != "party":
+            continue
+        if not (el.attrib.get("p_no") or el.attrib.get("pno")):
+            continue
+        attrs = {k.lower(): v for k, v in el.attrib.items()}
+        named = (
+            attrs.get("party") or attrs.get("name") or attrs.get("partyname")
+            or el.findtext("Party") or el.findtext("Name")
+            or el.findtext("short_name") or el.findtext("party_name")
+        )
+        if not (named or "").strip():
+            return True
+    return False
+
+
+def is_precount_placeholder(parsed: dict) -> bool:
+    """True when nothing is counted and every mapped vote and seat figure is zero.
+
+    The live file before 7pm is this shape. Writing it would score pending
+    questions as zero. A counted file with a real percentage is not a placeholder
+    even if some party is still on zero.
+    """
+    reporting = parsed.get("reporting_pct")
+    try:
+        reporting_zero = reporting is None or float(reporting) == 0.0
+    except (TypeError, ValueError):
+        reporting_zero = True
+    if not reporting_zero:
+        return False
+    numbers: list[float] = []
+    for bucket in ("votes", "seats"):
+        for value in (parsed.get(bucket) or {}).values():
+            try:
+                numbers.append(float(value))
+            except (TypeError, ValueError):
+                return False
+    return bool(numbers) and all(n == 0.0 for n in numbers)
+
+
+def fetch_election(url: str) -> tuple[Optional[bytes], Optional[str], Optional[str]]:
+    """Return (election_xml, url_used, error). Does not fetch parties.xml."""
     base = (url or "").strip()
     if base.endswith(".xml"):
         candidates = [base]
-        parties_url = base.rsplit("/", 1)[0] + "/parties.xml"
     else:
         root = base.rstrip("/")
         candidates = [root + "/election.xml", root + "/"]
-        parties_url = root + "/parties.xml"
     last_err = None
-    body = None
-    used = None
     for u in candidates:
         try:
             req = urllib.request.Request(u, headers={"User-Agent": "NZ-Election-Sweepstakes/1.0 (private party; results read-only)"})
@@ -380,20 +485,23 @@ def fetch_feed(url: str) -> tuple[Optional[bytes], Optional[bytes], Optional[str
                 if getattr(resp, "status", 200) != 200:
                     last_err = f"HTTP {resp.status} for {u}"
                     continue
-                body = resp.read()
-                used = u
-                break
+                return resp.read(), u, None
         except Exception as e:
             last_err = f"{u}: {e}"
+    return None, None, last_err
+
+
+def fetch_feed(url: str) -> tuple[Optional[bytes], Optional[bytes], Optional[str], Optional[str]]:
+    """Return (election_xml, parties_xml, url_used, error).
+
+    parties.xml is included when election.xml identifies parties by p_no.
+    FeedPoller.poll_once caches that file; this one-shot helper does not.
+    """
+    body, used, err = fetch_election(url)
     parties = None
-    try:
-        req = urllib.request.Request(parties_url, headers={"User-Agent": "NZ-Election-Sweepstakes/1.0 (private party; results read-only)"})
-        with urllib.request.urlopen(req, timeout=20) as resp:
-            if getattr(resp, "status", 200) == 200:
-                parties = resp.read()
-    except Exception:
-        parties = None
-    return body, parties, used, last_err
+    if body is not None and election_uses_pno(body):
+        parties = fetch_url(parties_url_for(used or url))
+    return body, parties, used, err
 
 
 def fetch_url(url: str) -> Optional[bytes]:
@@ -513,10 +621,20 @@ def parse_election_xml(body: bytes, parties_body: Optional[bytes] = None, electo
         return {"ok": False, "error": "XML parsed but no recognised party vote or seat figures", "votes": {}, "seats": {}}
 
     from scoring import derive_from_party_table
+    # Full party table, including Opportunity/TOP, so parties-in-parliament
+    # counts a party that has seats even though TOP has no vote-band question.
     derived = derive_from_party_table(votes, seats)
     values: dict[str, Any] = {}
+    for party_name, pct in votes.items():
+        key = PARTY_VOTE_KEYS.get(_norm(party_name))
+        if key is not None and pct is not None:
+            values[key] = pct
+    for party_name, n in seats.items():
+        key = PARTY_SEAT_KEYS.get(_norm(party_name))
+        if key is not None and n is not None:
+            values[key] = n
     for key in ("nat_vote", "lab_vote", "grn_vote", "act_vote", "nzf_vote", "tpm_vote"):
-        if derived.get(key) is not None:
+        if key not in values and derived.get(key) is not None:
             values[key] = derived[key]
     for key in ("most_seats", "parties_in", "bloc_61", "minor_highest"):
         if derived.get(key) is not None:

@@ -38,8 +38,8 @@
 
 - Documented live XML base: `https://media.election.net.nz/xml/`
 - Archives (past cycles): `https://archive.electionresults.govt.nz/electionresults_YYYY/xml/`
-- **Default is OFF.** The 2026 feed 404s until counting starts; the exact field layout is not verified for 2026 in this build. Manual entry is fully sufficient.
-- If you enable it on the night and it parses cleanly, values arrive as `AUTO`. Your manual overrides still win.
+- **Default is OFF.** The live 2026 file is `election.xml` (party rows are `p_no` only) plus `parties.xml` in the same directory. Before counting starts every figure is zero and percent counted is 0. That placeholder is not saved, so it cannot fill pending questions with zero.
+- If you enable it on the night and it parses cleanly, values arrive as `AUTO`. Your manual overrides still win. A later all-zero fetch does not wipe numbers already saved.
 - Poll interval: 60–120s recommended (feed CDN cache ~30s).
 
 ## Public players (not in the pot)

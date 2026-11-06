@@ -580,6 +580,7 @@ document.getElementById('feedPreview').onclick = async () => {
     const r = await Sweep.api('/api/admin/feed/preview', {method:'POST', body:'{}'});
     if (!r.ok) { out.textContent = r.reason || r.error || r.message || 'Preview failed. Nothing was changed.'; return; }
     const lines = ['Preview only — not applied.'];
+    if (r.placeholder) lines.push('Pre-count placeholder (0% counted, all zeros). Nothing is saved.');
     Object.entries(r.votes || {}).forEach(([k, v]) => lines.push(k + '  ' + v + '%  seats ' + ((r.seats || {})[k] ?? '—')));
     if (r.reporting_pct != null) lines.push('Counted ' + r.reporting_pct + '%');
     out.textContent = lines.join('\n');
@@ -588,7 +589,10 @@ document.getElementById('feedPreview').onclick = async () => {
 
 document.getElementById('feedPollNow').onclick = async () => {
   const r = await Sweep.api('/api/admin/feed/poll',{method:'POST',body:'{}'});
-  Sweep.toast(r.ok ? 'Poll ok' : ('Poll: '+(r.reason||r.error||'fail'))); refresh();
+  const note = r.skipped === 'precount_placeholder'
+    ? 'Pre-count placeholder — not applied'
+    : (r.ok ? 'Poll ok' : ('Poll: '+(r.reason||r.error||'fail')));
+  Sweep.toast(note); refresh();
 };
 document.getElementById('addQ').onclick = async () => {
   const label = prompt('Question label?');
