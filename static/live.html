@@ -12,27 +12,34 @@
 <link rel="manifest" href="/manifest.webmanifest"/>
 <link rel="stylesheet" href="/static/css/app.css"/>
 <script>
-/* Wide desktop keeps the existing fit. A room TV, ?tv=1, or /tv turns on TV mode. */
+/* Wide desktop keeps the existing fit. A room TV, ?tv=1, or /tv turns on TV mode.
+   No URLSearchParams: Tizen builds older than Chrome 49 throw and would skip this. */
 (function () {
-  var q = new URLSearchParams(location.search);
+  var search = location.search || '';
   var path = (location.pathname || '').replace(/\/+$/, '');
   var ua = navigator.userAgent || '';
-  var tvUa = /SMART-TV|SMART TV|Tizen|Web0S|WebOS/i.test(ua);
-  var forced = q.get('tv') === '1' || path === '/tv' || path === '/demo/tv';
-  if (tvUa || forced) document.documentElement.classList.add('tv-mode');
-  var wide = window.matchMedia('(min-width: 1800px)');
+  var samsungTv = /SamsungBrowser/i.test(ua) && /SMART-TV|SMART TV|SmartTV|Tizen|\bTV\b/i.test(ua);
+  var tvUa = /SMART-TV|SMART TV|SmartTV|Tizen|Web0S|WebOS|TV Safari/i.test(ua) || samsungTv;
+  var forced = /(?:^|[?&])tv=1(?:&|$)/.test(search) || path === '/tv' || path === '/demo/tv';
+  var off = /(?:^|[?&])tv=0(?:&|$)/.test(search);
+  var touch = (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
+  var widePlain = !touch && (window.innerWidth || document.documentElement.clientWidth || 0) >= 1200;
+  if (!off && (tvUa || forced || widePlain)) document.documentElement.classList.add('tv-mode');
+  var wide = window.matchMedia ? window.matchMedia('(min-width: 1800px)') : null;
   function sync() {
     var tv = document.documentElement.classList.contains('tv-mode');
-    document.documentElement.classList.toggle('tv-fit', tv || wide.matches);
+    if (!wide) return;
+    document.documentElement.classList.toggle('tv-fit', !tv && wide.matches);
   }
   sync();
-  if (wide.addEventListener) wide.addEventListener('change', sync);
-  else if (wide.addListener) wide.addListener(sync);
+  if (wide && wide.addEventListener) wide.addEventListener('change', sync);
+  else if (wide && wide.addListener) wide.addListener(sync);
 })();
 </script>
 <style>
 html, body { overflow: auto; height: auto; }
-html.tv-fit, html.tv-fit body { overflow: hidden; height: 100%; }
+html.tv-fit, html.tv-fit body,
+html.tv-mode, html.tv-mode body { overflow: hidden; height: 100%; }
 .leader-row.out { opacity: 0.45; filter: grayscale(0.4); }
 .leader-row .tag-out {
   display:inline-block; margin-left:8px; padding:2px 8px; border-radius:999px;
@@ -56,7 +63,7 @@ html.tv-fit, html.tv-fit body { overflow: hidden; height: 100%; }
 <body>
 <div id="reactLayer" class="react-layer"></div>
 <div id="leaderTakeover"><div><div class="sub">NEW LEADER</div><div class="big" id="leaderName">—</div></div></div>
-<div class="tv pot-board" id="tv">
+<div class="tv pot-board view-board" id="tv">
   <div class="tv-header">
     <div class="tv-head-main">
       <div class="row" style="gap:8px;margin-bottom:6px">

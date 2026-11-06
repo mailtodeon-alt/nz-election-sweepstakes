@@ -90,6 +90,20 @@
       if (reporting && pot.settings) {
         reporting.innerHTML = pot.settings.reporting_pct ? (pot.settings.reporting_pct + '% of voting places') : '\u2014';
       }
+      var latest = pot.latest_count;
+      var box = document.getElementById('latestBody');
+      if (box && latest) {
+        var players = latest.players || [];
+        var html = '<p class="muted">' + esc(latest.reporting_pct || '\u2014') + '% counted</p>';
+        var n;
+        for (n = 0; n < players.length; n++) {
+          var p = players[n];
+          html += '<div class="count-row"><div class="name">' + esc(p.name) + '</div><div class="sub">' +
+            (p.right || 0) + ' right \u00b7 ' + (p.adjacent || 0) + ' close \u00b7 ' +
+            (p.wrong || 0) + ' wrong \u00b7 ' + (p.pending || 0) + ' pending</div></div>';
+        }
+        box.innerHTML = html;
+      }
     });
     xhrJson('/api/open/state' + demo, function (pub) {
       if (!pub) return;
