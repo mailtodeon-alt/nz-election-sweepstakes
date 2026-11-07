@@ -106,17 +106,6 @@ function renderEstimate(est) {
   const overhang = Object.keys(est.overhang || {}).length ? JSON.stringify(est.overhang) : 'none';
   box.innerHTML = '<p>' + est.note + '</p><div>' + lines + '</div><p class="muted">Overhang: ' + overhang + '</p><h3>Calls that would flip</h3><div>' + flips + '</div>';
 }
-function startTvRotate() {
-  if (rotateTimer) return;
-  if (new URLSearchParams(location.search).get('view')) return;
-  var order = ['board', 'latest', 'estimate', 'ranks'];
-  var i = 0;
-  rotateTimer = setInterval(function () {
-    i = (i + 1) % order.length;
-    showWeekendView(order[i]);
-    if (order[i] === 'ranks') Night.loadChart('pot', 'rankChart');
-  }, 20000);
-}
 function startWeekendRotate() {
   if (rotateTimer) return;
   const order = ['board', 'latest', 'estimate', 'ranks'];
@@ -155,8 +144,9 @@ function render() {
   document.getElementById('updated').textContent = times.length ? Sweep.formatWhen(times[times.length-1]) : '—';
   document.getElementById('countdown').textContent = state.locked
     ? 'ENTRIES LOCKED' : Sweep.fmtCountdown(state.settings.lock_at, state.server_now);
+  const tvMode = document.documentElement.classList.contains('tv-mode');
   const asked = new URLSearchParams(location.search).get('view');
-  const view = asked === 'history' ? 'ranks' : (asked || 'board');
+  const view = tvMode ? 'board' : (asked === 'history' ? 'ranks' : (asked || 'board'));
   showWeekendView(view);
   if (Sweep.isDemo) {
     document.getElementById('recapLink').href = '/demo/recap';
@@ -172,8 +162,7 @@ function render() {
     : 'Biggest mover appears after two saved counts.';
   if (view === 'ranks') Night.loadChart('pot', 'rankChart');
   if (publicState) publicBoard.setPlayers(publicState.leaderboard, !!publicState.locked);
-  if (document.documentElement.classList.contains('tv-mode')) startTvRotate();
-  else if (state.settings.weekend_mode === '1') startWeekendRotate();
+  if (!tvMode && state.settings.weekend_mode === '1') startWeekendRotate();
   const avgCard = document.getElementById('avgCard');
   const cmp = state.compare_averages || {};
   const showAvg = (cmp.pot && cmp.pot.average != null) || (cmp.pub && cmp.pub.average != null);

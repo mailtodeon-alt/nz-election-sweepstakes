@@ -78,8 +78,17 @@
     if (d > 0) return d + 'd ' + h + 'h ' + m + 'm';
     return h + ':' + (m < 10 ? '0' : '') + m;
   }
+  function holdBoard() {
+    var tv = document.getElementById('tv');
+    if (!tv || !tv.classList) return;
+    tv.classList.remove('view-latest');
+    tv.classList.remove('view-estimate');
+    tv.classList.remove('view-ranks');
+    tv.classList.add('view-board');
+  }
   function tick() {
     if (window.__liveModern) return;
+    holdBoard();
     var demo = location.pathname.indexOf('/demo') === 0 ? '?demo=1' : '';
     xhrJson('/api/state' + demo, function (pot) {
       if (!pot) return;
@@ -118,6 +127,7 @@
     });
   }
   bootModern();
+  if (!window.__liveModern) holdBoard();
   tick();
   setInterval(tick, 15000);
 })();
