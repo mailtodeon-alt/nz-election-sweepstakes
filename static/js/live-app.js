@@ -323,28 +323,82 @@ function elecRowHtml(row) {
     '<div class="who">' + escapeHtml(row.leader || 'Waiting') + (row.party ? ' · ' + escapeHtml(row.party) : '') + (votes ? ' · ' + votes : '') + '</div>' +
     '<div class="who">' + runner + '</div></div></div>';
 }
+let seenLead = {};
+let leadPrimed = false;
+function leadLine(ev) {
+  const oldWho = (ev.old_leader || '') + (ev.old_party ? ' (' + ev.old_party + ')' : '');
+  const newWho = (ev.new_leader || '') + (ev.new_party ? ' (' + ev.new_party + ')' : '');
+  const margin = ev.margin == null ? '' : (' by ' + ev.margin);
+  return (ev.electorate || 'Electorate') + ': ' + newWho + ' leads ' + oldWho + margin;
+}
+function showLeadBanner(events) {
+  if (!events || !events.length) return;
+  const text = leadLine(events[0]);
+  const el = document.getElementById('leadBanner');
+  if (el) {
+    el.textContent = text;
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(() => el.classList.remove('show'), 6000);
+  }
+  if (window.Sweep && Sweep.toast) Sweep.toast(text);
+}
+function noteLeadChanges(events, announce) {
+  const fresh = [];
+  (events || []).forEach((ev) => {
+    if (!ev || ev.id == null || seenLead[ev.id]) return;
+    seenLead[ev.id] = 1;
+    if (announce) fresh.push(ev);
+  });
+  if (fresh.length) showLeadBanner(fresh);
+}
+function renderLeadChanges(events) {
+  const box = document.getElementById('leadChanges');
+  if (!box || document.documentElement.classList.contains('tv-board')) return;
+  const rows = events || [];
+  if (!rows.length) {
+    box.innerHTML = '<p class="muted">No lead changes yet.</p>';
+    return;
+  }
+  box.innerHTML = rows.map((ev) =>
+    '<div class="elec-change"><strong>' + escapeHtml(ev.electorate) + '</strong> ' +
+    escapeHtml(ev.old_leader || '') + (ev.old_party ? ' · ' + escapeHtml(ev.old_party) : '') +
+    ' → ' + escapeHtml(ev.new_leader || '') + (ev.new_party ? ' · ' + escapeHtml(ev.new_party) : '') +
+    (ev.margin == null ? '' : ' · +' + ev.margin) +
+    '<div class="who">' + escapeHtml(Sweep.formatWhen(ev.at)) + '</div></div>'
+  ).join('');
+}
 function renderElectorates(data) {
   const panel = document.getElementById('electoratesPanel');
-  if (!panel || document.documentElement.classList.contains('tv-board')) return;
+  if (!panel) return;
+  const tvBoard = document.documentElement.classList.contains('tv-board');
   const closeBox = document.getElementById('closeSeats');
   const board = document.getElementById('electorateBoard');
   if (!closeBox || !board) return;
-  const rows = (data && data.electorates) || [];
-  const close = (data && data.close) || [];
-  if (!rows.length) {
+  let rows = (data && data.electorates) || [];
+  let close = (data && data.close) || [];
+  if (tvBoard) {
+    close = close.slice(0, 4);
+    rows = rows.slice(0, 6);
+  }
+  if (!rows.length && !close.length) {
     closeBox.innerHTML = '<h3>Close seats</h3><p class="muted">Closest electorates appear as the count comes in.</p>';
     board.innerHTML = '';
+    renderLeadChanges((data && data.lead_changes) || []);
     return;
   }
   closeBox.innerHTML = '<h3>Close seats</h3>' + (close.length
     ? close.map(elecRowHtml).join('')
     : '<p class="muted">No seat is inside 500 votes or 2%.</p>');
   board.innerHTML = rows.map(elecRowHtml).join('');
+  renderLeadChanges((data && data.lead_changes) || []);
 }
 async function loadElectorates() {
-  if (document.documentElement.classList.contains('tv-board')) return;
   try {
     window.__electorates = await Sweep.api('/api/electorates');
+    const announce = leadPrimed;
+    noteLeadChanges(window.__electorates.lead_changes, announce);
+    leadPrimed = true;
     renderElectorates(window.__electorates);
   } catch (e) {}
 }
@@ -354,7 +408,10 @@ async function load() {
   loadElectorates();
 }
 load();
-Sweep.subscribe((msg) => Night.onEvent(msg, load));
+Sweep.subscribe((msg) => {
+  if (msg && msg.event === 'electorates') noteLeadChanges((msg.data && msg.data.lead_changes) || [], true);
+  Night.onEvent(msg, load);
+});
 if (document.documentElement.classList.contains('tv-mode')) {
   setInterval(function () { load(); }, 20000);
   if (navigator.wakeLock && navigator.wakeLock.request) {

@@ -26,6 +26,7 @@ from feed import (  # noqa: E402
     build_electorate_rows,
     electorate_is_close,
     maybe_enable_results_feed,
+    apply_lead_changes,
     merge_electorate_rows,
     parse_election_xml,
     parse_electorates,
@@ -257,6 +258,38 @@ def test_electorate_bundle_close_seats_and_api():
     assert "tv-board" in CLIENT.get("/tv").get_data(as_text=True)
 
 
+def test_lead_change_event_and_banner():
+    os.environ["SWEEP_NOW"] = "2026-11-07T18:30:00+13:00"
+    conn = D.connect(False)
+    try:
+        assert apply_lead_changes(conn, [{
+            "name": "Epsom", "leader": "Ada", "party": "ACT", "votes": 1000, "margin": 80,
+        }]) == []
+        events = apply_lead_changes(conn, [{
+            "name": "Epsom", "leader": "Bea", "party": "National", "votes": 1100, "margin": 40,
+        }])
+        assert apply_lead_changes(conn, [{
+            "name": "Epsom", "leader": "Cee", "party": "Labour", "votes": 0, "margin": 1,
+        }]) == []
+        conn.commit()
+    finally:
+        conn.close()
+        os.environ.pop("SWEEP_NOW", None)
+    assert events[0]["electorate"] == "Epsom"
+    assert events[0]["old_leader"] == "Ada" and events[0]["old_party"] == "ACT"
+    assert events[0]["new_leader"] == "Bea" and events[0]["new_party"] == "National"
+    assert events[0]["margin"] == 40
+    assert events[0]["at"].startswith("2026-11-07T18:30:00+13:00")
+    body = CLIENT.get("/api/electorates").get_json()
+    assert body["lead_changes"][0]["new_leader"] == "Bea"
+    assert body["lead_changes"][0]["old_leader"] == "Ada"
+    page = CLIENT.get("/live").get_data(as_text=True)
+    assert "leadBanner" in page and "Lead changes" in page
+    es5 = CLIENT.get("/static/js/live-es5.js").get_data(as_text=True)
+    assert "/api/electorates" in es5
+    assert "rotateTimer" not in es5
+
+
 def test_auto_enable_waits_for_lock_instant():
     conn = D.connect(False)
     try:
@@ -309,6 +342,7 @@ if __name__ == "__main__":
     test_news_parse_dedupe_and_skip_stub()
     test_electorate_leader_and_maori_region()
     test_electorate_bundle_close_seats_and_api()
+    test_lead_change_event_and_banner()
     test_auto_enable_waits_for_lock_instant()
     test_pages_and_status()
     print("HUB TESTS PASSED")
