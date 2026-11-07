@@ -604,7 +604,9 @@ def test_board_lists_every_party_with_votes_and_feed_seats():
     assert live["seats"]["National"] == 55
     assert live["right"]["seats"] == 55 + 5 + 4
     assert live["right"]["majority"] is True
-    assert "TOP" in live["order"]
+    assert live["order"][:7] == ["TOP", "Green", "Te Pāti Māori", "Labour", "NZ First", "National", "ACT"]
+    assert live["left"]["names"] == ["Labour", "Green", "Te Pāti Māori"]
+    assert live["right"]["names"] == ["National", "ACT", "NZ First"]
 
 
 def test_parties_xml_is_cached_for_pno_feeds():

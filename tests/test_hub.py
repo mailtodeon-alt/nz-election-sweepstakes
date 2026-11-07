@@ -80,6 +80,37 @@ def test_current_parliament_is_123():
     assert house["left"]["short"] == 62 - (34 + 15 + 6)
 
 
+def test_hemicycle_puts_top_left_of_green():
+    seats = {
+        "TOP": 7,
+        "Green": 12,
+        "Te Pāti Māori": 7,
+        "Labour": 30,
+        "NZ First": 4,
+        "National": 55,
+        "ACT": 5,
+    }
+    house = P.pack_house(seats, "2026 seats (official feed)")
+    assert house["order"][:7] == ["TOP", "Green", "Te Pāti Māori", "Labour", "NZ First", "National", "ACT"]
+    assert house["left"]["names"] == ["Labour", "Green", "Te Pāti Māori"]
+    assert house["right"]["names"] == ["National", "ACT", "NZ First"]
+    assert house["left"]["seats"] == 49
+    assert house["right"]["seats"] == 64
+    assert house["majority"] == P.majority_line(sum(seats.values()))
+    options = P.coalition_options(seats, house["majority"])
+    assert [row["names"] for row in options[:5]] == [
+        ["National", "ACT", "NZ First"],
+        ["National", "ACT"],
+        ["National", "NZ First"],
+        ["Labour", "Green", "Te Pāti Māori"],
+        ["Labour", "Green"],
+    ]
+    assert any("TOP" in row["names"] for row in options)
+    for row in options:
+        if "TOP" in row["names"]:
+            assert row["names"][-1] == "TOP"
+
+
 def test_live_projection_uses_sainte_lague():
     live = P.project_live(
         {"National": 40, "Labour": 30, "Green": 12, "ACT": 8, "NZ First": 6, "Te Pāti Māori": 3},

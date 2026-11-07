@@ -925,7 +925,7 @@ def party_board_rows(conn, settings: dict) -> list[dict]:
             if number is not None:
                 seats[str(name)] = number
         names = []
-        for party in list(P.HOUSE_ORDER) + list(votes.keys()) + list(P.OFFICIAL_PCT_2023.keys()):
+        for party in list(P.STABLE_PARTY_ORDER) + list(votes.keys()) + list(P.OFFICIAL_PCT_2023.keys()):
             if party in names:
                 continue
             if party not in votes and party not in seats and party not in P.OFFICIAL_PCT_2023:
