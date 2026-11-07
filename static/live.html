@@ -21,6 +21,9 @@
   var samsungTv = /SamsungBrowser/i.test(ua) && /SMART-TV|SMART TV|SmartTV|Tizen|\bTV\b/i.test(ua);
   var tvUa = /SMART-TV|SMART TV|SmartTV|Tizen|Web0S|WebOS|TV Safari/i.test(ua) || samsungTv;
   var forced = /(?:^|[?&])tv=1(?:&|$)/.test(search) || path === '/tv' || path === '/demo/tv';
+  if (path === '/tv' || path === '/demo/tv' || /(?:^|[?&])tv=1(?:&|$)/.test(search)) {
+    document.documentElement.classList.add('tv-board');
+  }
   var off = /(?:^|[?&])tv=0(?:&|$)/.test(search);
   var touch = (navigator.maxTouchPoints > 0) || (navigator.msMaxTouchPoints > 0);
   var widePlain = !touch && (window.innerWidth || document.documentElement.clientWidth || 0) >= 1200;
@@ -134,6 +137,11 @@ html.tv-mode, html.tv-mode body { overflow: hidden; height: 100%; }
   <div id="beforeCount"></div>
   </div>
   </div>
+  <section id="electoratesPanel" class="card elec-panel">
+    <h3 style="margin-top:0">Electorates</h3>
+    <div id="closeSeats"><h3>Close seats</h3><p class="muted">Closest electorates appear as the count comes in.</p></div>
+    <div id="electorateBoard"></div>
+  </section>
   <div id="newsStrip" class="news-strip"></div>
     <section id="view-latest" class="weekend-view card">
       <h3 style="margin-top:0">Latest count (not the pot result)</h3>

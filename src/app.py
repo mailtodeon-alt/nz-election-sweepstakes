@@ -29,7 +29,7 @@ import night as N
 import projection as P
 import weekend as W
 from scoring import score_player, rank_players, derive_from_party_table, actual_band_label, BANDS
-from feed import FeedPoller, party_color, party_is_compact, party_label
+from feed import FeedPoller, electorate_is_close, party_color, party_is_compact, party_label
 
 PORT = int(os.environ.get("PORT", "8787"))
 
@@ -1003,6 +1003,53 @@ def api_results():
             "house": house_payload(conn, settings),
             "advance": advance_public(settings),
         })
+    finally:
+        conn.close()
+
+
+def electorate_board(settings: dict, updated_at: str = "") -> dict:
+    """Counted electorates plus the close-seat list, closest first."""
+    rows = _json_setting(settings, "electorates_json", [])
+    if not isinstance(rows, list):
+        rows = []
+    counted = []
+    for row in rows:
+        if not isinstance(row, dict) or not row.get("leader"):
+            continue
+        try:
+            votes = int(row.get("votes") or 0)
+        except (TypeError, ValueError):
+            continue
+        if votes <= 0:
+            continue
+        item = dict(row)
+        item["votes"] = votes
+        item["close"] = electorate_is_close(item.get("margin"), item.get("votes_cast"))
+        counted.append(item)
+    counted.sort(key=lambda row: row.get("name") or "")
+
+    def margin_key(row):
+        try:
+            return int(row.get("margin"))
+        except (TypeError, ValueError):
+            return 10 ** 9
+
+    close = [row for row in counted if row.get("close")]
+    close.sort(key=lambda row: (margin_key(row), row.get("name") or ""))
+    return {"electorates": counted, "close": close, "updated_at": updated_at or ""}
+
+
+@app.get("/api/electorates")
+def api_electorates():
+    demo = use_demo()
+    conn = D.connect(demo)
+    try:
+        settings = D.all_settings(conn)
+        _f = conn.execute("SELECT last_success_at FROM feed_status WHERE id=1").fetchone()
+        feed = dict(_f) if _f else {}
+        payload = electorate_board(settings, feed.get("last_success_at") or "")
+        payload["demo"] = demo
+        return jsonify(payload)
     finally:
         conn.close()
 

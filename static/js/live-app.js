@@ -260,6 +260,7 @@ function render() {
     prevRanks[row.player_id] = place;
   });
   doFlip();
+  renderElectorates(window.__electorates);
   if (window.House && state.house) {
     House.mount(document.getElementById('houseHero'), state.house, { tv: true });
     House.mountBefore(document.getElementById('beforeCount'), state.advance, state.house.has_results);
@@ -308,9 +309,49 @@ function render() {
   }
 }
 
+function elecRowHtml(row) {
+  const margin = row.margin == null ? '—' : ('+' + Number(row.margin).toLocaleString('en-NZ'));
+  const pct = row.counted == null ? '—' : (Number(row.counted).toFixed(1) + '% counted');
+  const votes = row.votes ? Number(row.votes).toLocaleString('en-NZ') : '';
+  const secondVotes = row.second_votes != null ? Number(row.second_votes).toLocaleString('en-NZ') : '';
+  const runner = row.second
+    ? ('Runner-up ' + escapeHtml(row.second) + (row.second_party ? ' · ' + escapeHtml(row.second_party) : '') + (secondVotes ? ' ' + secondVotes : ''))
+    : 'Runner-up —';
+  return '<div class="elec-row' + (row.close ? ' close' : '') + '">' +
+    '<div class="elec-margin"><div>' + margin + '</div><div class="who">' + pct + '</div></div>' +
+    '<div><strong>' + escapeHtml(row.name) + '</strong>' +
+    '<div class="who">' + escapeHtml(row.leader || 'Waiting') + (row.party ? ' · ' + escapeHtml(row.party) : '') + (votes ? ' · ' + votes : '') + '</div>' +
+    '<div class="who">' + runner + '</div></div></div>';
+}
+function renderElectorates(data) {
+  const panel = document.getElementById('electoratesPanel');
+  if (!panel || document.documentElement.classList.contains('tv-board')) return;
+  const closeBox = document.getElementById('closeSeats');
+  const board = document.getElementById('electorateBoard');
+  if (!closeBox || !board) return;
+  const rows = (data && data.electorates) || [];
+  const close = (data && data.close) || [];
+  if (!rows.length) {
+    closeBox.innerHTML = '<h3>Close seats</h3><p class="muted">Closest electorates appear as the count comes in.</p>';
+    board.innerHTML = '';
+    return;
+  }
+  closeBox.innerHTML = '<h3>Close seats</h3>' + (close.length
+    ? close.map(elecRowHtml).join('')
+    : '<p class="muted">No seat is inside 500 votes or 2%.</p>');
+  board.innerHTML = rows.map(elecRowHtml).join('');
+}
+async function loadElectorates() {
+  if (document.documentElement.classList.contains('tv-board')) return;
+  try {
+    window.__electorates = await Sweep.api('/api/electorates');
+    renderElectorates(window.__electorates);
+  } catch (e) {}
+}
 async function load() {
   state = await Sweep.api('/api/state');
   render();
+  loadElectorates();
 }
 load();
 Sweep.subscribe((msg) => Night.onEvent(msg, load));
