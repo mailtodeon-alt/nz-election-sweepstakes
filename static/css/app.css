@@ -497,12 +497,15 @@ body:has(.tv) .burger-icon::after { background: #eef3ff; width: 22px; height: 3p
 @media (min-width: 1600px) { .tv .house-svg { max-height: 34vh; } }
 .house-legend { display: flex; flex-wrap: wrap; gap: 8px 14px; margin-top: 6px; font-size: clamp(12px, .85vw, 16px); }
 .house-legend i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+.house-legend i.hollow { background: transparent; box-shadow: inset 0 0 0 2px #32b5e8; }
 .house-blocs { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
 @media (max-width: 640px) { .house-blocs { grid-template-columns: 1fr; } }
 .bloc { border-radius: 12px; padding: 8px 10px; background: #10192c; color: #eef3ff; border: 1px solid #2a4068; }
 .bloc strong { display: block; }
 .bloc.yes { border-color: #1f6b45; }
 .bloc.no { border-color: #6b3144; }
+.house-blocs .bloc.swing { grid-column: 1 / -1; border-style: dashed; }
+.bloc .bloc-note { color: #9eb4d6; font-size: 12px; font-weight: 700; }
 .before-count h2 { margin: 0 0 8px; font-size: 1.15rem; }
 .advance-bars { display: grid; gap: 6px; margin: 8px 0; }
 .advance-row { display: grid; grid-template-columns: 88px 1fr auto; gap: 8px; align-items: center; font-size: 13px; }

@@ -185,12 +185,16 @@ PARLIAMENT_2023_NOTE = (
     "two-seat Te Pāti Māori overhang). The 25 November 2023 Port Waikato by-election "
     "added one National electorate seat, so the sitting House is 123 and a majority is 62."
 )
-# Left to right on the hemicycle. Opportunity (TOP) sits outside Green.
-HOUSE_ORDER = ["TOP", "Green", "Te Pāti Māori", "Labour", "NZ First", "National", "ACT"]
+# Left to right on the hemicycle. TOP sits between the blocs, so its seats
+# are the last ones before the right bloc and fall just left of the majority
+# line whenever Labour + Green + Te Pāti Māori + TOP is short of that line.
+HOUSE_ORDER = ["Green", "Te Pāti Māori", "Labour", "TOP", "NZ First", "National", "ACT"]
 # Pre-count party table and coalition search. Not the hemicycle.
 STABLE_PARTY_ORDER = ("Green", "Te Pāti Māori", "Labour", "NZ First", "National", "ACT", "TOP")
 LEFT_BLOC = ("Labour", "Green", "Te Pāti Māori")
 RIGHT_BLOC = ("National", "ACT", "NZ First")
+# Shown under the two committed blocs. Not a scored coalition.
+SWING_LEFT = ("Labour", "Green", "Te Pāti Māori", "TOP")
 
 
 def majority_line(house: int) -> int:
@@ -287,6 +291,7 @@ def pack_house(seats: dict, label: str, source: str = "", note: str = "") -> dic
         "majority": majority if house else 61,
         "left": _bloc(clean, LEFT_BLOC, majority if house else 61),
         "right": _bloc(clean, RIGHT_BLOC, majority if house else 61),
+        "swing_left": _bloc(clean, SWING_LEFT, majority if house else 61),
         "source": source,
         "note": note,
         "order": order,
