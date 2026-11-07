@@ -1007,6 +1007,27 @@ def api_results():
         conn.close()
 
 
+def lead_change_rows(conn, limit: int = 40) -> list[dict]:
+    fetched = conn.execute(
+        """SELECT id, at, electorate, old_leader, old_party, new_leader, new_party, margin
+           FROM electorate_lead_events ORDER BY id DESC LIMIT ?""",
+        (limit,),
+    ).fetchall()
+    return [
+        {
+            "id": row["id"],
+            "at": row["at"],
+            "electorate": row["electorate"],
+            "old_leader": row["old_leader"],
+            "old_party": row["old_party"],
+            "new_leader": row["new_leader"],
+            "new_party": row["new_party"],
+            "margin": row["margin"],
+        }
+        for row in fetched
+    ]
+
+
 def electorate_board(settings: dict, updated_at: str = "") -> dict:
     """Counted electorates plus the close-seat list, closest first."""
     rows = _json_setting(settings, "electorates_json", [])
@@ -1048,6 +1069,7 @@ def api_electorates():
         _f = conn.execute("SELECT last_success_at FROM feed_status WHERE id=1").fetchone()
         feed = dict(_f) if _f else {}
         payload = electorate_board(settings, feed.get("last_success_at") or "")
+        payload["lead_changes"] = lead_change_rows(conn)
         payload["demo"] = demo
         return jsonify(payload)
     finally:

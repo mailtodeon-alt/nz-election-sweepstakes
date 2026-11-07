@@ -125,10 +125,78 @@
     tv.classList.remove('view-ranks');
     tv.classList.add('view-board');
   }
+  var lastLeadId = 0;
+  var leadReady = false;
+  function isTvBoard() {
+    return (document.documentElement.className || '').indexOf('tv-board') !== -1;
+  }
+  function elecBits(row) {
+    var margin = row.margin == null ? '\u2014' : ('+' + row.margin);
+    var pct = row.counted == null ? '' : (row.counted + '% counted');
+    var second = row.second ? ('Runner-up ' + esc(row.second) + (row.second_party ? ' \u00b7 ' + esc(row.second_party) : '')) : '';
+    var cls = row.close ? 'elec-row close' : 'elec-row';
+    return '<div class="' + cls + '"><div class="elec-margin">' + margin + '<div class="who">' + esc(pct) + '</div></div>' +
+      '<div><strong>' + esc(row.name) + '</strong><div class="who">' + esc(row.leader || '') +
+      (row.party ? ' \u00b7 ' + esc(row.party) : '') + (row.votes ? ' \u00b7 ' + row.votes : '') +
+      '</div><div class="who">' + second + '</div></div></div>';
+  }
+  function showEs5Banner(ev) {
+    var el = document.getElementById('leadBanner');
+    if (!el || !ev) return;
+    var text = (ev.electorate || '') + ': ' + (ev.new_leader || '') +
+      (ev.new_party ? ' (' + ev.new_party + ')' : '') + ' leads ' + (ev.old_leader || '') +
+      (ev.old_party ? ' (' + ev.old_party + ')' : '') +
+      (ev.margin == null ? '' : ' by ' + ev.margin);
+    el.innerHTML = esc(text);
+    el.className = 'lead-banner show';
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.className = 'lead-banner'; }, 6000);
+  }
+  function paintElectorates(data) {
+    if (!data) return;
+    var closeBox = document.getElementById('closeSeats');
+    var board = document.getElementById('electorateBoard');
+    var changesBox = document.getElementById('leadChanges');
+    var tv = isTvBoard();
+    var close = data.close || [];
+    var rows = data.electorates || [];
+    var changes = data.lead_changes || [];
+    var i;
+    var n;
+    var html = '<h3>Close seats</h3>';
+    n = tv && close.length > 4 ? 4 : close.length;
+    if (!n) html += '<p class="muted">No seat is inside 500 votes or 2%.</p>';
+    for (i = 0; i < n; i++) html += elecBits(close[i]);
+    if (closeBox) closeBox.innerHTML = html;
+    html = '';
+    n = tv && rows.length > 6 ? 6 : rows.length;
+    for (i = 0; i < n; i++) html += elecBits(rows[i]);
+    if (board) board.innerHTML = html;
+    if (changesBox && !tv) {
+      if (!changes.length) changesBox.innerHTML = '<p class="muted">No lead changes yet.</p>';
+      else {
+        html = '';
+        n = changes.length > 12 ? 12 : changes.length;
+        for (i = 0; i < n; i++) {
+          var ev = changes[i];
+          html += '<div class="elec-change"><strong>' + esc(ev.electorate) + '</strong> ' +
+            esc(ev.old_leader || '') + ' \u2192 ' + esc(ev.new_leader || '') +
+            (ev.margin == null ? '' : ' \u00b7 +' + ev.margin) + '</div>';
+        }
+        changesBox.innerHTML = html;
+      }
+    }
+    if (changes.length && changes[0].id != null) {
+      if (leadReady && changes[0].id !== lastLeadId) showEs5Banner(changes[0]);
+      lastLeadId = changes[0].id;
+    }
+    leadReady = true;
+  }
   function tick() {
     if (window.__liveModern) return;
     holdBoard();
     var demo = location.pathname.indexOf('/demo') === 0 ? '?demo=1' : '';
+    xhrJson('/api/electorates' + demo, paintElectorates);
     xhrJson('/api/state' + demo, function (pot) {
       if (!pot) return;
       var board = pot.combined_leaderboard || pot.leaderboard || [];

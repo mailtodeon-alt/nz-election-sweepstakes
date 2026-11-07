@@ -71,6 +71,7 @@ html.tv-mode, html.tv-mode body { overflow: hidden; height: 100%; }
 <body>
 <div id="reactLayer" class="react-layer"></div>
 <div id="leaderTakeover"><div><div class="sub">NEW LEADER</div><div class="big" id="leaderName">—</div></div></div>
+<div id="leadBanner" class="lead-banner" role="status"></div>
 <div class="tv pot-board view-board" id="tv">
   <div class="tv-header">
     <div class="tv-head-main">
@@ -140,6 +141,8 @@ html.tv-mode, html.tv-mode body { overflow: hidden; height: 100%; }
   <section id="electoratesPanel" class="card elec-panel">
     <h3 style="margin-top:0">Electorates</h3>
     <div id="closeSeats"><h3>Close seats</h3><p class="muted">Closest electorates appear as the count comes in.</p></div>
+    <h3 id="leadChangesTitle">Lead changes</h3>
+    <div id="leadChanges"><p class="muted">No lead changes yet.</p></div>
     <div id="electorateBoard"></div>
   </section>
   <div id="newsStrip" class="news-strip"></div>

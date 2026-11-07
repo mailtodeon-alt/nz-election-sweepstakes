@@ -498,6 +498,53 @@ def _ensure_weekend(conn: Conn) -> None:
         conn.execute(stmt)
 
 
+def _ensure_electorate_tables(conn: Conn) -> None:
+    """Previous electorate leader and lead-change events. Additive only."""
+    if conn.backend == "sqlite":
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS electorate_leaders (
+                electorate TEXT PRIMARY KEY,
+                leader TEXT NOT NULL,
+                party TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS electorate_lead_events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                at TEXT NOT NULL,
+                electorate TEXT NOT NULL,
+                old_leader TEXT NOT NULL,
+                old_party TEXT NOT NULL DEFAULT '',
+                new_leader TEXT NOT NULL,
+                new_party TEXT NOT NULL DEFAULT '',
+                margin INTEGER,
+                created_at TEXT NOT NULL
+            );
+            """
+        )
+        return
+    for stmt in (
+        """CREATE TABLE IF NOT EXISTS electorate_leaders (
+            electorate TEXT PRIMARY KEY,
+            leader TEXT NOT NULL,
+            party TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL
+        )""",
+        """CREATE TABLE IF NOT EXISTS electorate_lead_events (
+            id SERIAL PRIMARY KEY,
+            at TEXT NOT NULL,
+            electorate TEXT NOT NULL,
+            old_leader TEXT NOT NULL,
+            old_party TEXT NOT NULL DEFAULT '',
+            new_leader TEXT NOT NULL,
+            new_party TEXT NOT NULL DEFAULT '',
+            margin INTEGER,
+            created_at TEXT NOT NULL
+        )""",
+    ):
+        conn.execute(stmt)
+
+
 def init_db(demo: bool = False, force_seed_players: bool = True) -> None:
     with _lock:
         conn = connect(demo)
@@ -524,6 +571,7 @@ def init_db(demo: bool = False, force_seed_players: bool = True) -> None:
                         conn.execute(s)
                 conn.commit()
             _ensure_weekend(conn)
+            _ensure_electorate_tables(conn)
 
             for k, v in DEFAULT_SETTINGS.items():
                 if conn.backend == "sqlite":

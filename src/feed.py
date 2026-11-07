@@ -422,8 +422,13 @@ class FeedPoller:
                 except (TypeError, ValueError):
                     continue
                 counted_electorates.append(row)
+            lead_events = []
             if counted_electorates:
                 D.set_setting(conn, "electorates_json", json.dumps(counted_electorates))
+                try:
+                    lead_events = apply_lead_changes(conn, counted_electorates)
+                except Exception:
+                    lead_events = []
 
             summary = json.dumps({"url": used, "applied": applied, "reporting": parsed.get("reporting_pct")})
             conn.execute(
@@ -436,6 +441,8 @@ class FeedPoller:
             conn.commit()
             if applied or parsed.get("electorates"):
                 self.broadcast("results")
+            if lead_events:
+                self.broadcast("electorates", {"lead_changes": lead_events})
             return {
                 "ok": True,
                 "applied": applied,
@@ -960,6 +967,81 @@ def build_electorate_rows(index_xml: bytes, candidates_xml: bytes, files: dict[s
         })
     rows.sort(key=lambda row: row["name"])
     return rows
+
+
+def apply_lead_changes(conn, rows: list) -> list[dict]:
+    """Record a change when the leading candidate in an electorate changes.
+
+    The first counted leader is stored and is not an event. All-zero rows
+    are ignored. Times are New Zealand local time.
+    """
+    current = {}
+    for row in conn.execute("SELECT electorate, leader, party FROM electorate_leaders").fetchall():
+        current[row["electorate"]] = (row["leader"], row["party"] or "")
+    events = []
+    now = D.iso_now()
+    for row in rows or []:
+        if not isinstance(row, dict) or not row.get("leader"):
+            continue
+        try:
+            if int(row.get("votes") or 0) <= 0:
+                continue
+        except (TypeError, ValueError):
+            continue
+        name = str(row["name"])
+        leader = str(row["leader"])
+        party = str(row.get("party") or "")
+        prev = current.get(name)
+        if prev and prev[0] and (prev[0] != leader or prev[1] != party):
+            try:
+                margin = int(row["margin"]) if row.get("margin") is not None else None
+            except (TypeError, ValueError):
+                margin = None
+            if conn.backend == "sqlite":
+                cur = conn.execute(
+                    """INSERT INTO electorate_lead_events
+                       (at, electorate, old_leader, old_party, new_leader, new_party, margin, created_at)
+                       VALUES (?,?,?,?,?,?,?,?)""",
+                    (now, name, prev[0], prev[1], leader, party, margin, now),
+                )
+                event_id = cur.lastrowid
+            else:
+                cur = conn.execute(
+                    """INSERT INTO electorate_lead_events
+                       (at, electorate, old_leader, old_party, new_leader, new_party, margin, created_at)
+                       VALUES (?,?,?,?,?,?,?,?) RETURNING id""",
+                    (now, name, prev[0], prev[1], leader, party, margin, now),
+                )
+                got = cur.fetchone()
+                event_id = got["id"] if isinstance(got, dict) else got[0]
+            events.append({
+                "id": event_id,
+                "at": now,
+                "electorate": name,
+                "old_leader": prev[0],
+                "old_party": prev[1],
+                "new_leader": leader,
+                "new_party": party,
+                "margin": margin,
+            })
+        if conn.backend == "sqlite":
+            conn.execute(
+                """INSERT INTO electorate_leaders(electorate, leader, party, updated_at)
+                   VALUES (?,?,?,?)
+                   ON CONFLICT(electorate) DO UPDATE SET
+                     leader=excluded.leader, party=excluded.party, updated_at=excluded.updated_at""",
+                (name, leader, party, now),
+            )
+        else:
+            conn.execute(
+                """INSERT INTO electorate_leaders(electorate, leader, party, updated_at)
+                   VALUES (?,?,?,?)
+                   ON CONFLICT(electorate) DO UPDATE SET
+                     leader=EXCLUDED.leader, party=EXCLUDED.party, updated_at=EXCLUDED.updated_at""",
+                (name, leader, party, now),
+            )
+        current[name] = (leader, party)
+    return events
 
 
 def merge_electorate_rows(previous: list, fresh: list) -> list[dict]:
