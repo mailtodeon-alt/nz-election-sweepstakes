@@ -55,7 +55,7 @@ window.House = (function () {
     return pts;
   }
   function sequence(view) {
-    const order = view.order || ['Green', 'Te Pāti Māori', 'Labour', 'NZ First', 'National', 'ACT', 'TOP'];
+    const order = view.order || ['TOP', 'Green', 'Te Pāti Māori', 'Labour', 'NZ First', 'National', 'ACT'];
     const seats = view.seats || {};
     const dots = [];
     order.forEach((party) => {

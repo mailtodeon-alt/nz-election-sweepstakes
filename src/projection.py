@@ -185,7 +185,10 @@ PARLIAMENT_2023_NOTE = (
     "two-seat Te Pāti Māori overhang). The 25 November 2023 Port Waikato by-election "
     "added one National electorate seat, so the sitting House is 123 and a majority is 62."
 )
-HOUSE_ORDER = ["Green", "Te Pāti Māori", "Labour", "NZ First", "National", "ACT", "TOP"]
+# Left to right on the hemicycle. Opportunity (TOP) sits outside Green.
+HOUSE_ORDER = ["TOP", "Green", "Te Pāti Māori", "Labour", "NZ First", "National", "ACT"]
+# Pre-count party table and coalition search. Not the hemicycle.
+STABLE_PARTY_ORDER = ("Green", "Te Pāti Māori", "Labour", "NZ First", "National", "ACT", "TOP")
 LEFT_BLOC = ("Labour", "Green", "Te Pāti Māori")
 RIGHT_BLOC = ("National", "ACT", "NZ First")
 
@@ -215,7 +218,7 @@ def coalition_options(seats: dict, majority: int) -> list[dict]:
             continue
         if count > 0:
             clean[str(name)] = count
-    parties = [name for name in HOUSE_ORDER if clean.get(name)]
+    parties = [name for name in STABLE_PARTY_ORDER if clean.get(name)]
     for name in clean:
         if name not in parties:
             parties.append(name)
