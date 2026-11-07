@@ -689,10 +689,6 @@ html.tv-fit .tv.pot-board.view-ranks {
 .elec-row.close { background: rgba(255, 209, 102, 0.14); margin: 0 -8px; padding: 8px; }
 .elec-row .who { color: var(--muted); font-size: 0.92em; }
 .elec-row .elec-margin { float: right; text-align: right; }
-html.tv-board #electoratesPanel {
-  display: block; flex: 0 0 auto; max-height: 22vh; overflow: hidden;
-  margin: 0.4vh 0 0; padding: 0.4vh 0.6vw;
-}
 html.tv-board #leadChanges, html.tv-board #leadChangesTitle { display: none; }
 html.tv-board .elec-row { padding: 0.15vh 0; }
 .lead-banner {
@@ -703,9 +699,6 @@ html.tv-board .elec-row { padding: 0.15vh 0; }
 }
 .lead-banner.show { display: block; }
 .elec-change { padding: 6px 0; border-bottom: 1px solid #22345c; }
-html.tv-mode:not(.tv-board) #electoratesPanel {
-  flex: 0 0 auto; max-height: 32vh; overflow: auto; margin: 8px 0 0;
-}
 .electorate-tools { display: flex; gap: 8px; flex-wrap: wrap; margin: 8px 0; }
 .electorate-tools input, .electorate-tools select { flex: 1; min-width: 140px; }
 .electorate { display: grid; grid-template-columns: 1.3fr .9fr auto auto; gap: 8px; padding: 10px 0; border-bottom: 1px solid #22345c; align-items: center; }
@@ -716,7 +709,7 @@ html.tv-mode:not(.tv-board) #electoratesPanel {
 html.tv-mode, html.tv-mode body { overflow: hidden; height: 100%; }
 html.tv-mode .tv.pot-board {
   height: 100vh; max-height: 100vh; overflow: hidden;
-  box-sizing: border-box; padding: 2vh 3vw 1.5vh;
+  box-sizing: border-box; padding: 0.5vh 0.8vw;
   display: block;
   display: flex;
   flex-direction: column;
@@ -727,12 +720,13 @@ html.tv-mode .sound-toggle,
 html.tv-mode .public-tools,
 html.tv-mode .burger,
 html.tv-mode .tv.pot-board.view-board #newsStrip,
-html.tv-mode .tv.pot-board.view-board #houseHero,
 html.tv-mode .tv.pot-board.view-board #beforeCount,
 html.tv-mode .tv.pot-board.view-board #avgCard,
 html.tv-mode .tv.pot-board.view-board #sideCard,
 html.tv-mode .tv.pot-board.view-board #pendingNote { display: none; }
-html.tv-mode .tv.pot-board .week-tabs { pointer-events: none; margin: 0 0 0.4vh; }
+html.tv-mode .tv.pot-board.view-board .week-tabs,
+html.tv-mode .tv.pot-board.view-board #liveListNote { display: none; }
+html.tv-mode .tv.pot-board .week-tabs { pointer-events: none; margin: 0; }
 html.tv-mode .tv.pot-board .week-tabs button,
 html.tv-mode .tv.pot-board .week-tabs a.btn {
   min-height: 0; padding: 0.2vh 0.55vw; margin: 0 0.35vw 0.25vh 0;
@@ -746,7 +740,7 @@ html.tv-mode .tv.pot-board .tv-header {
 html.tv-mode .tv.pot-board .tv-head-main { overflow: hidden; padding-right: 1vw; }
 html.tv-mode .tv.pot-board .tv-meta { float: right; text-align: right; font-size: 1.15vw; }
 html.tv-mode .tv.pot-board .tv-meta strong { font-size: 1.6vw; }
-html.tv-mode .tv.pot-board .tv-title { font-size: 2.3vw; margin: 0; line-height: 1.05; }
+html.tv-mode .tv.pot-board .tv-title { font-size: 1.5vw; margin: 0; line-height: 1.05; }
 html.tv-mode .tv.pot-board .tv-sub { font-size: 1.15vw; margin: 0.2vh 0 0; }
 html.tv-mode .tv.pot-board .pane-label {
   font-size: 1.2vw; line-height: 1.15; margin: 0 0 0.4vh;
@@ -758,10 +752,10 @@ html.tv-mode .tv.pot-board .tv-stage {
   flex: 1 1 auto; min-height: 0; height: auto;
 }
 html.tv-mode .tv.pot-board .tv-stage .board {
-  display: block; float: left; width: 64%; margin: 0;
+  display: block; float: left; width: 46%; margin: 0;
   height: 100%; overflow: hidden;
   display: flex; flex-direction: row; align-items: stretch;
-  flex: 1 1 64%; min-width: 0;
+  flex: 1 1 46%; min-width: 0;
 }
 html.tv-mode .tv.pot-board .board-half {
   display: block; float: left; width: 100%; height: 100%;
@@ -772,9 +766,10 @@ html.tv-mode .tv.pot-board .public-half { margin-right: 0; }
 html.tv-mode .tv.pot-board .leader-wrap,
 html.tv-mode .tv.pot-board .pot-half .leader-wrap { height: 100%; overflow: hidden; }
 html.tv-mode .tv.pot-board .tv-rail {
-  display: block; float: right; width: 34%; height: 100%;
+  display: block; float: right; width: 52%; height: 100%;
   margin: 0; overflow: hidden; min-width: 0;
-  flex: 0 0 34%;
+  flex: 1 1 52%;
+  display: flex; flex-direction: column;
 }
 html.tv-mode .tv.pot-board .tv-rail .card {
   padding: 0.5vh 0.6vw; margin: 0 0 0.6vh; font-size: 1.15vw;
@@ -787,7 +782,22 @@ html.tv-mode .tv.pot-board .prize {
 }
 html.tv-mode .tv.pot-board .prize:last-child { margin-right: 0; }
 html.tv-mode .tv.pot-board .prize .amt { font-size: 1.35vw; }
-html.tv-mode .tv.pot-board .house-svg { max-height: 18vh; }
+html.tv-mode .tv.pot-board.view-board #houseHero {
+  display: block; overflow: hidden; flex: 0 0 auto; max-height: 28vh;
+}
+html.tv-mode .tv.pot-board.view-board .house-card { padding: 0.2vh 0.4vw; }
+html.tv-mode .tv.pot-board.view-board .house-label { font-size: 1.05vw; margin: 0; }
+html.tv-mode .tv.pot-board.view-board .house-meta,
+html.tv-mode .tv.pot-board.view-board .house-blocs,
+html.tv-mode .tv.pot-board.view-board .house-card .muted { display: none; }
+html.tv-mode .tv.pot-board .house-svg { max-height: 24vh; width: 100%; }
+html.tv-mode .tv.pot-board.view-board .house-svg {
+  display: block; height: 22vh; max-height: 22vh; width: auto; max-width: 100%; margin: 0 auto;
+}
+html.tv-mode .tv.pot-board:not(.view-board) #electoratesPanel { display: none; }
+html.tv-mode .tv.pot-board:not(.view-board) .fit-bottom {
+  display: block; height: auto; max-height: none; flex: 1 1 auto; overflow: hidden;
+}
 html.tv-mode .tv.pot-board .party-bar {
   display: block; overflow: hidden; margin: 0 0 0.28vh; font-size: 1.02vw;
 }
@@ -828,10 +838,46 @@ html.tv-mode .tv.pot-board .leader-row .delta { display: none; }
 html.tv-mode .leader-row,
 html.tv-mode .leader-row.first { transition: none; box-shadow: none; animation: none; }
 html.tv-mode .tv.pot-board #derivedCard { display: block !important; }
+html.tv-mode .tv.pot-board.view-board #derivedCard,
+html.tv-mode .tv.pot-board.view-board .prizes { display: none !important; }
+html.tv-mode .tv.pot-board.view-board .side-panel {
+  flex: 1 1 auto; min-height: 0; overflow: hidden;
+}
+html.tv-mode .tv.pot-board.view-board #partyCard {
+  margin: 0; max-height: 100%; overflow: hidden;
+}
+html.tv-mode .tv.pot-board.view-board .fit-bottom {
+  display: block;
+  overflow: hidden;
+  height: 20vh;
+  max-height: 20vh;
+  margin-top: 0.3vh;
+  flex: 0 0 20vh;
+}
+html.tv-mode .tv.pot-board.view-board .fit-bottom > #electoratesPanel,
+html.tv-mode .tv.pot-board.view-board .fit-bottom > #view-latest {
+  display: block !important;
+  float: left;
+  width: 48%;
+  height: 19vh;
+  max-height: 19vh;
+  overflow: hidden;
+  box-sizing: border-box;
+  padding: 0.3vh 0.5vw;
+  font-size: 1vw;
+  margin: 0;
+}
+html.tv-mode .tv.pot-board.view-board .fit-bottom > #view-latest { margin-left: 2%; }
+html.tv-mode .tv.pot-board.view-board .elec-full-title,
+html.tv-mode .tv.pot-board.view-board #leadChanges,
+html.tv-mode .tv.pot-board.view-board #leadChangesTitle,
+html.tv-mode .tv.pot-board.view-board #electorateBoard { display: none; }
+html.tv-mode .tv.pot-board.view-board .elec-row {
+  padding: 0.1vh 0; margin: 0; font-size: 0.95vw; white-space: nowrap;
+}
+html.tv-mode .tv.pot-board.view-board .elec-row .who { display: inline; margin-left: 0.4em; font-size: 0.85vw; }
 html.tv-mode .tv.pot-board.view-board #view-latest {
-  display: block; clear: both; margin: 0.4vh 0 0; padding: 0.3vh 0.6vw;
-  max-height: 24vh; overflow: hidden; font-size: 1.05vw;
-  flex: 0 0 auto;
+  display: block !important;
 }
 html.tv-mode .tv.pot-board.view-board #view-latest > p,
 html.tv-mode .tv.pot-board.view-board .count-ticks { display: none; }

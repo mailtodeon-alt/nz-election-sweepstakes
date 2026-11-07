@@ -157,19 +157,19 @@
     var closeBox = document.getElementById('closeSeats');
     var board = document.getElementById('electorateBoard');
     var changesBox = document.getElementById('leadChanges');
-    var tv = isTvBoard();
+    var tv = isTvBoard() || (document.documentElement.className || '').indexOf('tv-mode') !== -1;
     var close = data.close || [];
     var rows = data.electorates || [];
     var changes = data.lead_changes || [];
     var i;
     var n;
     var html = '<h3>Close seats</h3>';
-    n = tv && close.length > 4 ? 4 : close.length;
+    n = tv && close.length > 3 ? 3 : close.length;
     if (!n) html += '<p class="muted">No seat is inside 500 votes or 2%.</p>';
     for (i = 0; i < n; i++) html += elecBits(close[i]);
     if (closeBox) closeBox.innerHTML = html;
     html = '';
-    n = tv && rows.length > 6 ? 6 : rows.length;
+    n = tv ? 0 : rows.length;
     for (i = 0; i < n; i++) html += elecBits(rows[i]);
     if (board) board.innerHTML = html;
     if (changesBox && !tv) {
