@@ -184,7 +184,7 @@ _SEAT_RGB = {
 
 
 def _draw_recap_seats(draw: ImageDraw.ImageDraw, payload: dict, top: int) -> None:
-    """Same left-to-right order and solid fills as the on-screen hemicycle."""
+    """Same left-to-right order as the on-screen hemicycle. TOP is an outline."""
     seats = payload.get("house_seats") or dict(P.PARLIAMENT_2023)
     order = payload.get("house_order") or list(P.HOUSE_ORDER)
     seq = []
@@ -203,8 +203,11 @@ def _draw_recap_seats(draw: ImageDraw.ImageDraw, payload: dict, top: int) -> Non
         y = cy - rad * math.sin(ang) * 0.72
         color = _SEAT_RGB.get(party, (143, 163, 200))
         r = 7
-        outline = (255, 255, 255) if party == "NZ First" else None
-        draw.ellipse((x - r, y - r, x + r, y + r), fill=color, outline=outline)
+        if party == "TOP":
+            draw.ellipse((x - r, y - r, x + r, y + r), fill=(7, 11, 20), outline=color, width=2)
+        else:
+            outline = (255, 255, 255) if party == "NZ First" else None
+            draw.ellipse((x - r, y - r, x + r, y + r), fill=color, outline=outline)
 
 
 def render_recap_png(payload: dict) -> bytes:

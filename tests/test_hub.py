@@ -80,7 +80,7 @@ def test_current_parliament_is_123():
     assert house["left"]["short"] == 62 - (34 + 15 + 6)
 
 
-def test_hemicycle_puts_top_left_of_green():
+def test_hemicycle_puts_top_between_blocs():
     seats = {
         "TOP": 7,
         "Green": 12,
@@ -91,12 +91,41 @@ def test_hemicycle_puts_top_left_of_green():
         "ACT": 5,
     }
     house = P.pack_house(seats, "2026 seats (official feed)")
-    assert house["order"][:7] == ["TOP", "Green", "Te Pāti Māori", "Labour", "NZ First", "National", "ACT"]
+    assert house["order"][:7] == ["Green", "Te Pāti Māori", "Labour", "TOP", "NZ First", "National", "ACT"]
     assert house["left"]["names"] == ["Labour", "Green", "Te Pāti Māori"]
     assert house["right"]["names"] == ["National", "ACT", "NZ First"]
     assert house["left"]["seats"] == 49
     assert house["right"]["seats"] == 64
     assert house["majority"] == P.majority_line(sum(seats.values()))
+    # TOP follows the left bloc, so these 7 seats end at index 55, left of seat 61.
+    assert 12 + 7 + 30 + 7 <= house["majority"]
+    assert house["swing_left"]["names"] == ["Labour", "Green", "Te Pāti Māori", "TOP"]
+    assert house["swing_left"]["seats"] == 49 + 7
+    assert house["swing_left"]["short"] == house["majority"] - 56
+    assert house["swing_left"]["majority"] is False
+    clear = {
+        "Green": 15,
+        "Te Pāti Māori": 6,
+        "Labour": 35,
+        "TOP": 6,
+        "NZ First": 8,
+        "National": 40,
+        "ACT": 10,
+    }
+    swung = P.pack_house(clear, "2026 seats (official feed)")
+    assert swung["house"] == 120
+    assert swung["majority"] == 61
+    assert swung["left"]["seats"] == 56
+    assert swung["left"]["short"] == 5
+    assert swung["right"]["seats"] == 58
+    assert swung["swing_left"]["seats"] == 62
+    assert swung["swing_left"]["short"] == 0
+    assert swung["swing_left"]["majority"] is True
+    js = (ROOT / "static" / "js" / "house.js").read_text(encoding="utf-8")
+    assert "'Green', 'Te Pāti Māori', 'Labour', 'TOP', 'NZ First', 'National', 'ACT'" in js
+    assert "uncommitted, leans left" in js
+    assert "if TOP swings left" in js
+    assert "fill-opacity" in js
     options = P.coalition_options(seats, house["majority"])
     assert [row["names"] for row in options[:5]] == [
         ["National", "ACT", "NZ First"],
@@ -198,6 +227,7 @@ def test_pages_and_status():
 
 if __name__ == "__main__":
     test_current_parliament_is_123()
+    test_hemicycle_puts_top_between_blocs()
     test_live_projection_uses_sainte_lague()
     test_advance_table_and_blocked_page()
     test_news_parse_dedupe_and_skip_stub()

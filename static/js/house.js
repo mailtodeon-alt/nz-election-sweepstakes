@@ -55,7 +55,9 @@ window.House = (function () {
     return pts;
   }
   function sequence(view) {
-    const order = view.order || ['TOP', 'Green', 'Te Pāti Māori', 'Labour', 'NZ First', 'National', 'ACT'];
+    // Green, Te Pāti Māori, Labour, then TOP in the middle (left of the
+    // majority line when that group is short), then NZ First, National, ACT.
+    const order = view.order || ['Green', 'Te Pāti Māori', 'Labour', 'TOP', 'NZ First', 'National', 'ACT'];
     const seats = view.seats || {};
     const dots = [];
     order.forEach((party) => {
@@ -101,6 +103,12 @@ window.House = (function () {
         c.setAttribute('stroke', '#ffffff');
         c.setAttribute('stroke-width', '1');
         c.setAttribute('vector-effect', 'non-scaling-stroke');
+      } else if (party === 'TOP') {
+        c.setAttribute('fill', '#32b5e8');
+        c.setAttribute('fill-opacity', '0.16');
+        c.setAttribute('stroke', '#7fd4f5');
+        c.setAttribute('stroke-width', '1.2');
+        c.setAttribute('vector-effect', 'non-scaling-stroke');
       }
       svg.appendChild(c);
     });
@@ -121,10 +129,26 @@ window.House = (function () {
         swatch.style.boxShadow = '0 0 0 1px #ffffff';
       }
       var label = party === 'TOP' ? 'Opportunity (TOP)' : party;
-      span.append(swatch, document.createTextNode(label + ' ' + n));
+      var text = label + ' ' + n;
+      if (party === 'TOP') {
+        swatch.className = 'hollow';
+        swatch.style.background = 'transparent';
+        swatch.style.boxShadow = 'inset 0 0 0 2px #32b5e8';
+        text += ' · uncommitted, leans left';
+      }
+      span.append(swatch, document.createTextNode(text));
       box.appendChild(span);
     });
     host.appendChild(box);
+  }
+  function swingBloc(view) {
+    if (view.swing_left && view.swing_left.names) return view.swing_left;
+    const names = ['Labour', 'Green', 'Te Pāti Māori', 'TOP'];
+    const table = view.seats || {};
+    const seats = names.reduce((sum, name) => sum + (table[name] || 0), 0);
+    const majority = Number(view.majority) || 0;
+    const short = Math.max(0, majority - seats);
+    return { names: names, seats: seats, short: short, majority: short === 0 };
   }
   function blocs(host, view) {
     const wrap = document.createElement('div');
@@ -140,6 +164,23 @@ window.House = (function () {
       card.append(title, line);
       wrap.appendChild(card);
     });
+    const topSeats = (view.seats || {}).TOP || 0;
+    if (topSeats > 0) {
+      const swing = swingBloc(view);
+      const card = document.createElement('div');
+      card.className = 'bloc swing ' + (swing.majority ? 'yes' : 'no');
+      card.style.gridColumn = '1 / -1';
+      card.style.borderStyle = 'dashed';
+      const title = document.createElement('strong');
+      title.textContent = (swing.names || []).join(' + ');
+      const note = document.createElement('div');
+      note.className = 'bloc-note';
+      note.textContent = 'if TOP swings left';
+      const line = document.createElement('div');
+      line.textContent = swing.seats + ' seats · ' + (swing.majority ? 'has a majority' : swing.short + ' short');
+      card.append(title, note, line);
+      wrap.appendChild(card);
+    }
     host.appendChild(wrap);
   }
   function mount(el, house, opts) {
