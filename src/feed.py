@@ -15,6 +15,7 @@ import threading
 import time
 import urllib.request
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from typing import Any, Optional
 from pathlib import Path
@@ -359,6 +360,22 @@ class FeedPoller:
                     "reporting_pct": parsed.get("reporting_pct"),
                 }
 
+            # Same 180s cycle as party results. A failed or slow electorate
+            # fetch must not stop the party write below.
+            if used:
+                try:
+                    fresh = load_electorate_rows(used, parties_body)
+                except Exception:
+                    fresh = []
+                if fresh:
+                    try:
+                        previous = json.loads(D.get_setting(conn, "electorates_json", "[]") or "[]")
+                    except Exception:
+                        previous = []
+                    if not isinstance(previous, list):
+                        previous = []
+                    parsed["electorates"] = merge_electorate_rows(previous, fresh)
+
             questions = {q["key"]: q for q in D.list_questions(conn)}
             results = D.get_results(conn)
             applied = []
@@ -395,8 +412,18 @@ class FeedPoller:
                 "seats": parsed.get("seats") or {},
                 "vote_counts": parsed.get("vote_counts") or {},
             }))
-            if parsed.get("electorates"):
-                D.set_setting(conn, "electorates_json", json.dumps(parsed["electorates"]))
+            counted_electorates = []
+            for row in parsed.get("electorates") or []:
+                if not isinstance(row, dict) or not row.get("leader"):
+                    continue
+                try:
+                    if int(row.get("votes") or 0) <= 0:
+                        continue
+                except (TypeError, ValueError):
+                    continue
+                counted_electorates.append(row)
+            if counted_electorates:
+                D.set_setting(conn, "electorates_json", json.dumps(counted_electorates))
 
             summary = json.dumps({"url": used, "applied": applied, "reporting": parsed.get("reporting_pct")})
             conn.execute(
@@ -553,10 +580,10 @@ def fetch_feed(url: str) -> tuple[Optional[bytes], Optional[bytes], Optional[str
     return body, parties, used, err
 
 
-def fetch_url(url: str) -> Optional[bytes]:
+def fetch_url(url: str, timeout: int = 20) -> Optional[bytes]:
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "NZ-Election-Sweepstakes/1.0 (private party; results read-only)"})
-        with urllib.request.urlopen(req, timeout=20) as resp:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
             if getattr(resp, "status", 200) != 200:
                 return None
             return resp.read()
@@ -769,3 +796,244 @@ def parse_electorates(root: ET.Element, pno_map: dict[str, str]) -> list[dict]:
         })
     found.sort(key=lambda row: row["name"])
     return found
+
+
+def electorate_is_close(margin, votes_cast) -> bool:
+    """True when the lead is under 500 votes or under 2% of votes cast."""
+    try:
+        margin_n = int(margin)
+    except (TypeError, ValueError):
+        return False
+    if margin_n < 0:
+        return False
+    try:
+        cast_n = int(votes_cast or 0)
+    except (TypeError, ValueError):
+        cast_n = 0
+    return margin_n < 500 or (cast_n > 0 and margin_n * 50 < cast_n)
+
+
+def _name_part(part: str) -> str:
+    part = (part or "").strip()
+    letters = [ch for ch in part if ch.isalpha()]
+    if letters and all(ch.isupper() for ch in letters):
+        return part.title()
+    return part
+
+
+def candidate_display_name(raw: str) -> str:
+    """Turn 'SWARBRICK, Chlöe' into 'Chlöe Swarbrick'."""
+    text = (raw or "").strip()
+    if "," not in text:
+        return _name_part(text)
+    last, first = text.split(",", 1)
+    flipped = f"{_name_part(first)} {_name_part(last)}".strip()
+    return flipped or text
+
+
+def _local_tag(el: ET.Element) -> str:
+    return el.tag.split("}")[-1].lower()
+
+
+def _int_text(text) -> int:
+    try:
+        return int(float(str(text or "0").replace(",", "").strip() or "0"))
+    except (TypeError, ValueError):
+        return 0
+
+
+def parse_electorate_index(body: bytes) -> list[dict]:
+    """electorates.xml: e_no and electorate_name. No vote figures."""
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        return []
+    found = []
+    for el in root.iter():
+        if _local_tag(el) != "electorate":
+            continue
+        eno = (el.attrib.get("e_no") or el.attrib.get("eno") or el.findtext("e_no") or "").strip()
+        name = (el.findtext("electorate_name") or el.findtext("name") or "").strip()
+        if not eno or not name:
+            continue
+        found.append({"e_no": str(int(eno)) if eno.isdigit() else eno, "name": name})
+    return found
+
+
+def parse_candidate_directory(body: bytes) -> dict[str, dict]:
+    """candidates.xml: c_no → name, electorate number, party number."""
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        return {}
+    out = {}
+    for el in root.iter():
+        if _local_tag(el) != "candidate":
+            continue
+        cno = (el.attrib.get("c_no") or el.attrib.get("cno") or "").strip()
+        if not cno:
+            continue
+        out[str(cno)] = {
+            "name": (el.findtext("candidate_name") or el.findtext("name") or "").strip(),
+            "electorate": (el.findtext("electorate") or "").strip(),
+            "party_no": (el.findtext("party") or "").strip(),
+        }
+    return out
+
+
+def parse_electorate_votes(body: bytes) -> dict:
+    """One eNN/eNN.xml file: percent counted, votes cast, candidate votes."""
+    try:
+        root = ET.fromstring(body)
+    except ET.ParseError:
+        return {}
+    counted = None
+    counted_el = root.find(".//percent_voting_places_counted")
+    if counted_el is not None and (counted_el.text or "").strip():
+        try:
+            counted = float(counted_el.text.strip())
+        except ValueError:
+            counted = None
+    cast = _int_text(root.findtext(".//total_votes_cast"))
+    by_cno = {}
+    for el in root.iter():
+        if _local_tag(el) != "candidate":
+            continue
+        cno = (el.attrib.get("c_no") or el.attrib.get("cno") or "").strip()
+        if not cno:
+            continue
+        by_cno[str(cno)] = _int_text(el.findtext("votes"))
+    return {"counted": counted, "votes_cast": cast, "by_cno": by_cno}
+
+
+def build_electorate_rows(index_xml: bytes, candidates_xml: bytes, files: dict[str, bytes], pno_map: dict[str, str]) -> list[dict]:
+    """Join the electorate list, candidate names, and per-electorate vote files.
+
+    All-zero files are omitted. Missing files are omitted so the caller can
+    keep the previous row for that electorate.
+    """
+    directory = parse_electorate_index(index_xml)
+    candidates = parse_candidate_directory(candidates_xml)
+    rows = []
+    for item in directory:
+        eno = str(item["e_no"])
+        body = None
+        for key in (eno, f"{int(eno):02d}" if eno.isdigit() else eno):
+            if key in files:
+                body = files[key]
+                break
+        if not body:
+            continue
+        parsed = parse_electorate_votes(body)
+        if not parsed:
+            continue
+        tally = []
+        for cno, votes in (parsed.get("by_cno") or {}).items():
+            meta = candidates.get(str(cno)) or {}
+            name = candidate_display_name(meta.get("name") or "")
+            if not name:
+                continue
+            party_no = str(meta.get("party_no") or "")
+            party = pno_map.get(party_no) or ""
+            tally.append({"name": name, "party": party, "votes": int(votes or 0)})
+        if not tally or sum(c["votes"] for c in tally) <= 0:
+            continue
+        tally.sort(key=lambda c: c["votes"], reverse=True)
+        leader = tally[0]
+        second = tally[1] if len(tally) > 1 else {"name": "", "party": "", "votes": 0}
+        margin = max(0, leader["votes"] - second["votes"])
+        cast = int(parsed.get("votes_cast") or 0) or sum(c["votes"] for c in tally)
+        rows.append({
+            "name": item["name"],
+            "region": _region_for(item["name"]),
+            "e_no": eno,
+            "leader": leader["name"],
+            "party": leader["party"],
+            "votes": leader["votes"],
+            "second": second["name"],
+            "second_party": second["party"],
+            "second_votes": second["votes"],
+            "margin": margin,
+            "counted": parsed.get("counted"),
+            "votes_cast": cast,
+            "close": electorate_is_close(margin, cast),
+        })
+    rows.sort(key=lambda row: row["name"])
+    return rows
+
+
+def merge_electorate_rows(previous: list, fresh: list) -> list[dict]:
+    """Keep the last good row when this cycle's file was missing or all zeros."""
+    by = {}
+    for row in previous or []:
+        if not isinstance(row, dict) or not row.get("name") or not row.get("leader"):
+            continue
+        try:
+            if int(row.get("votes") or 0) <= 0:
+                continue
+        except (TypeError, ValueError):
+            continue
+        by[row["name"]] = row
+    for row in fresh or []:
+        if isinstance(row, dict) and row.get("name"):
+            by[row["name"]] = row
+    return sorted(by.values(), key=lambda row: row["name"])
+
+
+def fetch_electorate_files(base: str, e_numbers: list[str]) -> dict[str, bytes]:
+    """Fetch eNN/eNN.xml together. Short timeouts; a miss returns no body."""
+    numbers = []
+    for eno in e_numbers:
+        try:
+            numbers.append(int(eno))
+        except (TypeError, ValueError):
+            continue
+
+    def one(number: int):
+        slug = f"e{number:02d}"
+        url = base.rstrip("/") + f"/{slug}/{slug}.xml"
+        return str(number), fetch_url(url, timeout=6)
+
+    found: dict[str, bytes] = {}
+    if not numbers:
+        return found
+    pool = ThreadPoolExecutor(max_workers=8)
+    futures = [pool.submit(one, number) for number in numbers]
+    try:
+        for fut in as_completed(futures, timeout=20):
+            try:
+                eno, body = fut.result()
+            except Exception:
+                continue
+            if body:
+                found[eno] = body
+    except TimeoutError:
+        for fut in futures:
+            fut.cancel()
+    finally:
+        # Don't hold the party-result write for a slow file. In-flight
+        # requests time out on their own.
+        pool.shutdown(wait=False, cancel_futures=True)
+    return found
+
+
+def load_electorate_rows(election_url: str, parties_body: Optional[bytes]) -> list[dict]:
+    """Download the electorate list, candidates, and per-electorate files.
+
+    Returns [] on failure so the caller leaves the last good snapshot alone.
+    """
+    base = election_url.rsplit("/", 1)[0] if (election_url or "").endswith(".xml") else (election_url or "").rstrip("/")
+    if not base:
+        return []
+    index = fetch_url(base + "/electorates.xml", timeout=8)
+    candidates = fetch_url(base + "/candidates.xml", timeout=8)
+    if not index or not candidates:
+        return []
+    directory = parse_electorate_index(index)
+    pno = dict(BUILTIN_PNO)
+    if parties_body:
+        pno.update(parties_from_xml(parties_body))
+    files = fetch_electorate_files(base, [row["e_no"] for row in directory])
+    if not files:
+        return []
+    return build_electorate_rows(index, candidates, files, pno)

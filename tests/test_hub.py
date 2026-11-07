@@ -22,7 +22,14 @@ import advance as ADV  # noqa: E402
 import db as D  # noqa: E402
 import newsfeed as NEWS  # noqa: E402
 import projection as P  # noqa: E402
-from feed import maybe_enable_results_feed, parse_election_xml, parse_electorates  # noqa: E402
+from feed import (  # noqa: E402
+    build_electorate_rows,
+    electorate_is_close,
+    maybe_enable_results_feed,
+    merge_electorate_rows,
+    parse_election_xml,
+    parse_electorates,
+)
 from app import app  # noqa: E402
 
 CLIENT = app.test_client()
@@ -181,6 +188,75 @@ def test_electorate_leader_and_maori_region():
     assert rows[0]["counted"] == 42.5
 
 
+INDEX_XML = b"""<electorates>
+  <electorate e_no="1"><electorate_name>Auckland Central</electorate_name></electorate>
+  <electorate e_no="2"><electorate_name>Botany</electorate_name></electorate>
+  <electorate e_no="3"><electorate_name>Epsom</electorate_name></electorate>
+  <electorate e_no="4"><electorate_name>Ikaroa-R\xc4\x81whiti</electorate_name></electorate>
+</electorates>"""
+
+CANDIDATES_XML = b"""<candidates>
+  <candidate c_no="243"><candidate_name>SWARBRICK, Chl\xc3\xb6e</candidate_name><electorate>1</electorate><party>10</party></candidate>
+  <candidate c_no="192"><candidate_name>WHITE, Example</candidate_name><electorate>1</electorate><party>16</party></candidate>
+  <candidate c_no="1"><candidate_name>BIG, Lead</candidate_name><electorate>2</electorate><party>16</party></candidate>
+  <candidate c_no="2"><candidate_name>SMALL, Other</candidate_name><electorate>2</electorate><party>13</party></candidate>
+  <candidate c_no="3"><candidate_name>NEAR, One</candidate_name><electorate>3</electorate><party>5</party></candidate>
+  <candidate c_no="4"><candidate_name>NEAR, Two</candidate_name><electorate>3</electorate><party>16</party></candidate>
+  <candidate c_no="5"><candidate_name>ZERO, A</candidate_name><electorate>4</electorate><party>14</party></candidate>
+  <candidate c_no="6"><candidate_name>ZERO, B</candidate_name><electorate>4</electorate><party>13</party></candidate>
+</candidates>"""
+
+PNO = {"5": "ACT", "10": "Green", "13": "Labour", "14": "Te P\u0101ti M\u0101ori", "16": "National"}
+
+
+def _efile(counted, cast, pairs):
+    cands = "".join(f'<candidate c_no="{cno}"><votes>{votes}</votes></candidate>' for cno, votes in pairs)
+    return (
+        f'<electorate><statistics><percent_voting_places_counted>{counted}</percent_voting_places_counted>'
+        f'<total_votes_cast>{cast}</total_votes_cast></statistics><candidatevotes>{cands}</candidatevotes></electorate>'
+    ).encode()
+
+
+def test_electorate_bundle_close_seats_and_api():
+    rows = build_electorate_rows(INDEX_XML, CANDIDATES_XML, {
+        "1": _efile("30.8", 19007, [("243", 8902), ("192", 8782)]),
+        "2": _efile("40", 20000, [("1", 14000), ("2", 6000)]),
+        "3": _efile("10", 100000, [("3", 50800), ("4", 50000)]),
+        "4": _efile("0", 0, [("5", 0), ("6", 0)]),
+    }, PNO)
+    by = {row["name"]: row for row in rows}
+    assert "Ikaroa-Rāwhiti" not in by
+    central = by["Auckland Central"]
+    assert central["leader"] == "Chlöe Swarbrick"
+    assert central["party"] == "Green"
+    assert central["votes"] == 8902
+    assert central["second"] == "Example White"
+    assert central["second_party"] == "National"
+    assert central["margin"] == 120
+    assert central["counted"] == 30.8
+    assert central["close"] is True
+    assert by["Botany"]["margin"] == 8000
+    assert by["Botany"]["close"] is False
+    assert by["Epsom"]["margin"] == 800
+    assert by["Epsom"]["close"] is True
+    assert electorate_is_close(500, 25000) is False
+    assert electorate_is_close(499, 100000) is True
+    kept = merge_electorate_rows(rows, [by["Botany"]])
+    assert {row["name"] for row in kept} == {"Auckland Central", "Botany", "Epsom"}
+    conn = D.connect(False)
+    try:
+        D.set_setting(conn, "electorates_json", __import__("json").dumps(rows))
+        conn.commit()
+    finally:
+        conn.close()
+    body = CLIENT.get("/api/electorates").get_json()
+    assert [row["name"] for row in body["close"]] == ["Auckland Central", "Epsom"]
+    assert body["electorates"][0]["leader"]
+    page = CLIENT.get("/live").get_data(as_text=True)
+    assert "electoratesPanel" in page and "Close seats" in page
+    assert "tv-board" in CLIENT.get("/tv").get_data(as_text=True)
+
+
 def test_auto_enable_waits_for_lock_instant():
     conn = D.connect(False)
     try:
@@ -232,6 +308,7 @@ if __name__ == "__main__":
     test_advance_table_and_blocked_page()
     test_news_parse_dedupe_and_skip_stub()
     test_electorate_leader_and_maori_region()
+    test_electorate_bundle_close_seats_and_api()
     test_auto_enable_waits_for_lock_instant()
     test_pages_and_status()
     print("HUB TESTS PASSED")
