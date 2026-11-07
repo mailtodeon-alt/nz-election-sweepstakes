@@ -273,6 +273,10 @@ def pack_house(seats: dict, label: str, source: str = "", note: str = "") -> dic
             clean[str(name)] = count
     house = sum(clean.values())
     majority = majority_line(house) if house else 61
+    order = list(HOUSE_ORDER)
+    for name in sorted(clean, key=lambda n: (-clean[n], n)):
+        if name not in order:
+            order.append(name)
     return {
         "label": label,
         "seats": clean,
@@ -282,7 +286,7 @@ def pack_house(seats: dict, label: str, source: str = "", note: str = "") -> dic
         "right": _bloc(clean, RIGHT_BLOC, majority if house else 61),
         "source": source,
         "note": note,
-        "order": list(HOUSE_ORDER),
+        "order": order,
     }
 
 

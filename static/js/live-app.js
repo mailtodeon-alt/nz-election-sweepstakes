@@ -44,6 +44,42 @@ const PARTIES = [
   { key: 'tpm_vote', name: 'Te Pāti Māori', color: '#B2001D' },
 ];
 
+function escapeHtml(s) {
+  return String(s == null ? '' : s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+const BALLOT_NAMES = { National: 1, Labour: 1, Green: 1, ACT: 1, 'NZ First': 1, 'Te Pāti Māori': 1 };
+function partyVoteRows() {
+  const rows = (state && state.parties) || [];
+  const fromFeed = rows.some(row => row.seats != null || (row.percent != null && row.key && !BALLOT_NAMES[row.key]));
+  if (fromFeed) {
+    return rows.filter(row => {
+      const v = parseFloat(row.percent);
+      return row.percent != null && !Number.isNaN(v) && v > 0;
+    }).map(row => ({
+      name: row.party,
+      percent: row.percent,
+      seats: row.seats,
+      color: row.color || '#8fa3c8',
+      minor: !!row.minor,
+      manual: false,
+    }));
+  }
+  return PARTIES.map(p => {
+    const r = resultForKey(p.key);
+    const v = r ? parseFloat(r.value) : null;
+    const known = v != null && !Number.isNaN(v);
+    return {
+      name: p.name,
+      percent: known ? v : null,
+      seats: null,
+      color: p.color,
+      minor: false,
+      manual: r && r.source === 'manual',
+      known: known,
+    };
+  }).filter(p => p.known);
+}
 function qByKey(key) { return state.questions.find(q => q.key === key); }
 function resultForKey(key) {
   const q = qByKey(key);
@@ -230,23 +266,22 @@ function render() {
   }
 
   const bars = document.getElementById('partyBars');
-  const anyVote = PARTIES.some(p => {
-    const r = resultForKey(p.key);
-    return r && r.value !== '' && r.value != null && !Number.isNaN(parseFloat(r.value));
-  });
+  const liveParties = partyVoteRows();
+  const anyVote = liveParties.length > 0;
   document.getElementById('partyCard').hidden = !anyVote;
   if (!anyVote) {
     bars.innerHTML = '';
-  } else bars.innerHTML = PARTIES.map(p => {
-    const r = resultForKey(p.key);
-    const v = r ? parseFloat(r.value) : null;
-    const src = r ? r.source : '';
-    const known = v != null && !Number.isNaN(v);
+  } else bars.innerHTML = liveParties.map(p => {
+    const v = parseFloat(p.percent);
+    const known = !Number.isNaN(v);
     const w = known ? Math.min(100, v * 2) : 0;
-    return `<div class="party-bar">
-      <div>${p.name}</div>
+    const seats = p.seats == null ? '' : (' · ' + p.seats);
+    const star = p.manual ? '*' : '';
+    const minor = p.minor ? ' minor' : '';
+    return `<div class="party-bar${minor}">
+      <div class="party-name" title="${escapeHtml(p.name)}">${escapeHtml(p.name)}</div>
       <div class="bar-track${known ? '' : ' pending'}"><div class="bar-fill" style="width:${w}%;background:${p.color}"></div></div>
-      <div style="text-align:right;font-family:var(--mono)">${known ? v.toFixed(1)+'%' : 'pending'}${src==='manual'?'*':''}</div>
+      <div class="party-fig">${known ? v.toFixed(1)+'%'+seats : 'pending'}${star}</div>
     </div>`;
   }).join('');
 

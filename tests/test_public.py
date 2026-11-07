@@ -168,6 +168,7 @@ def test_pages():
     assert "tvMode ? 'board'" in app_js
     es5 = CLIENT.get("/static/js/live-es5.js").get_data(as_text=True)
     assert "function holdBoard()" in es5
+    assert "paintParties" in es5
     assert "view-board" in es5
     assert "setInterval(tick, 15000)" in es5
     assert "Public leaderboard" in live

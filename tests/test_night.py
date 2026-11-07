@@ -74,6 +74,7 @@ def wipe():
         D.set_setting(conn, "ticker_enabled", "1")
         D.set_setting(conn, "reporting_pct", "")
         D.set_setting(conn, "party_table_json", "")
+        D.set_setting(conn, "feed_party_json", "{}")
 
 
 def login():
@@ -403,6 +404,7 @@ def test_2026_feed_joins_parties_and_skips_placeholder():
     assert named["17"] == "NZ First"
     assert named["14"] == "Te Pāti Māori"
     assert named["24"] == "TOP"
+    assert named["36"] == "Aotearoa Legalise Cannabis Party"
 
     lone = b"""<?xml version="1.0"?><election><partystatus>
       <party p_no="99"><percent_votes>41.2</percent_votes><total_seats>50</total_seats></party>
@@ -488,6 +490,25 @@ def test_2026_feed_joins_parties_and_skips_placeholder():
     assert parties_in["value"] == "7" and parties_in["source"] == "auto"
     assert reporting == "18.5"
     assert "400000" in counts
+    board = expect(CLIENT.get("/api/results"), 200)
+    by_key = {row["key"]: row for row in board["parties"]}
+    assert by_key["National"]["seats"] == 40
+    assert by_key["Labour"]["seats"] == 32
+    assert by_key["TOP"]["party"] == "Opportunity (TOP)"
+    assert by_key["TOP"]["percent"] == 2.0
+    assert by_key["TOP"]["seats"] == 2
+    assert all(row["seats"] is not None for row in board["parties"])
+    shares = [row["percent"] for row in board["parties"]]
+    assert shares == sorted(shares, reverse=True)
+    live = board["house"]["live"]
+    assert live["source"] == "feed"
+    assert live["seats"]["National"] == 40
+    assert live["seats"]["TOP"] == 2
+    # 40+10+8 from total_seats. The ballot line stays 61, so bloc_61 is still No.
+    assert live["right"]["seats"] == 58
+    assert live["majority"] == 111 // 2 + 1
+    state = expect(CLIENT.get("/api/state"), 200)
+    assert any(row["key"] == "TOP" and row["party"] == "Opportunity (TOP)" for row in state["parties"])
 
     again = S.feed_poller.poll_once(body=election, parties_body=parties, apply=True)
     assert again["applied"] == []
@@ -504,6 +525,86 @@ def test_2026_feed_joins_parties_and_skips_placeholder():
     assert nat["value"] == "1.0" and nat["source"] == "manual"
     assert reporting == "18.5"
     assert "400000" in counts
+    kept = expect(CLIENT.get("/api/results"), 200)
+    assert next(row for row in kept["parties"] if row["key"] == "TOP")["seats"] == 2
+    assert kept["house"]["live"]["seats"]["National"] == 40
+
+
+def test_board_lists_every_party_with_votes_and_feed_seats():
+    """Every party with votes, sorted by share. Seats and the 61-bloc use total_seats."""
+    parties = PARTIES_2026.read_bytes()
+    body = b"""<?xml version="1.0" encoding="UTF-8"?>
+<election>
+  <statistics><percent_voting_places_counted>22.0</percent_voting_places_counted></statistics>
+  <partystatus>
+    <party p_no="16"><votes>420000</votes><percent_votes>42.0</percent_votes><total_seats>55</total_seats></party>
+    <party p_no="13"><votes>300000</votes><percent_votes>30.0</percent_votes><total_seats>38</total_seats></party>
+    <party p_no="10"><votes>45000</votes><percent_votes>4.5</percent_votes><total_seats>5</total_seats></party>
+    <party p_no="5"><votes>40000</votes><percent_votes>4.0</percent_votes><total_seats>5</total_seats></party>
+    <party p_no="17"><votes>35000</votes><percent_votes>3.5</percent_votes><total_seats>4</total_seats></party>
+    <party p_no="14"><votes>20000</votes><percent_votes>2.0</percent_votes><total_seats>6</total_seats></party>
+    <party p_no="24"><votes>55900</votes><percent_votes>5.59</percent_votes><total_seats>7</total_seats></party>
+    <party p_no="36"><votes>11000</votes><percent_votes>1.10</percent_votes><total_seats>0</total_seats></party>
+    <party p_no="70"><votes>4000</votes><percent_votes>0.40</percent_votes><total_seats>0</total_seats></party>
+    <party p_no="2"><votes>0</votes><percent_votes>0</percent_votes><total_seats>0</total_seats></party>
+  </partystatus>
+</election>
+"""
+    parsed = parse_election_xml(body, parties)
+    assert parsed["votes"]["TOP"] == 5.59
+    assert parsed["seats"]["TOP"] == 7
+    assert parsed["votes"]["Aotearoa Legalise Cannabis Party"] == 1.10
+    assert parsed["votes"]["New Zealand Loyal"] == 0.40
+    assert parsed["values"]["minor_highest"] == "TOP"
+    assert parsed["values"]["bloc_61"] == "Yes"  # 55+5+4
+    assert parsed["values"]["parties_in"] == 7
+
+    wipe()
+    applied = S.feed_poller.poll_once(body=body, parties_body=parties, apply=True)
+    assert applied["ok"] is True
+    qs = {q["key"]: q for q in questions()}
+    conn = D.connect(False)
+    try:
+        minor = conn.execute(
+            "SELECT value FROM results WHERE question_id=?", (qs["minor_highest"]["id"],)
+        ).fetchone()
+        bloc = conn.execute(
+            "SELECT value FROM results WHERE question_id=?", (qs["bloc_61"]["id"],)
+        ).fetchone()
+    finally:
+        conn.close()
+    assert minor["value"] == "TOP"
+    assert bloc["value"] == "Yes"
+
+    board = expect(CLIENT.get("/api/results"), 200)
+    names = [row["party"] for row in board["parties"]]
+    assert "Future Youth Party" not in names
+    assert names[0] == "National"
+    assert "Opportunity (TOP)" in names
+    top = next(row for row in board["parties"] if row["key"] == "TOP")
+    assert top["percent"] == 5.59
+    assert top["seats"] == 7
+    assert top["minor"] is False
+    cannabis = next(row for row in board["parties"] if row["key"] == "Aotearoa Legalise Cannabis Party")
+    assert cannabis["percent"] == 1.10
+    assert cannabis["seats"] == 0
+    assert cannabis["minor"] is True
+    loyal = next(row for row in board["parties"] if row["key"] == "New Zealand Loyal")
+    assert loyal["percent"] == 0.40
+    assert loyal["seats"] == 0
+    assert loyal["minor"] is True
+    shares = [row["percent"] for row in board["parties"]]
+    assert shares == sorted(shares, reverse=True)
+    assert all(row["seats"] is not None for row in board["parties"])
+    live = board["house"]["live"]
+    assert live["source"] == "feed"
+    assert live["house"] == 120
+    assert live["majority"] == 61
+    assert live["seats"]["TOP"] == 7
+    assert live["seats"]["National"] == 55
+    assert live["right"]["seats"] == 55 + 5 + 4
+    assert live["right"]["majority"] is True
+    assert "TOP" in live["order"]
 
 
 def test_parties_xml_is_cached_for_pno_feeds():
@@ -587,6 +688,7 @@ def main():
     test_averages_count_submitted_only()
     test_feed_fixture_and_manual_override()
     test_2026_feed_joins_parties_and_skips_placeholder()
+    test_board_lists_every_party_with_votes_and_feed_seats()
     test_parties_xml_is_cached_for_pno_feeds()
     test_demo_previews_features_without_touching_real_rows()
     backend = "postgres" if D.using_postgres() else "sqlite"

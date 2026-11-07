@@ -12,6 +12,8 @@ if not (os.environ.get("DATABASE_URL") or "").strip() and not (os.environ.get("D
     os.environ["DB_PATH"] = str(Path(tempfile.mkdtemp(prefix="sweep-weekend-")) / "sweep.db")
 os.environ.setdefault("SECRET_KEY", "test-secret")
 os.environ.setdefault("ADMIN_PASSWORD", "test-admin")
+# Default lock is 7pm NZDT on 7 Nov 2026. Freeze earlier so entries stay open.
+os.environ.setdefault("SWEEP_NOW", "2026-11-07T18:30:00+13:00")
 sys.path.insert(0, str(ROOT))
 
 from app import app  # noqa: E402

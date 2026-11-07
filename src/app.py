@@ -29,7 +29,7 @@ import night as N
 import projection as P
 import weekend as W
 from scoring import score_player, rank_players, derive_from_party_table, actual_band_label, BANDS
-from feed import FeedPoller
+from feed import FeedPoller, party_color, party_is_compact, party_label
 
 PORT = int(os.environ.get("PORT", "8787"))
 
@@ -684,6 +684,7 @@ def assemble_state(conn, demo: bool, pool: str) -> dict:
         "biggest_mover": W.biggest_mover(series),
         "pot_result_frozen": pool == D.POOL_POT and mode in ("frozen", "official") and ranked is not live_ranked,
         "house": house_payload(conn, settings),
+        "parties": party_board_rows(conn, settings),
         "advance": advance_public(settings),
         "headlines": headlines_public(settings, limit=4),
     }
@@ -718,18 +719,120 @@ def headlines_public(settings: dict, limit: int = 4) -> list:
     return rows[:limit]
 
 
+def _as_float(value):
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_int(value):
+    try:
+        return int(float(value))
+    except (TypeError, ValueError):
+        return None
+
+
+def feed_party_snapshot(settings: dict) -> dict:
+    blob = _json_setting(settings, "feed_party_json", {})
+    return blob if isinstance(blob, dict) else {}
+
+
 def house_payload(conn, settings: dict) -> dict:
     votes, _seat_totals = W._current_party_numbers(conn)
     candidate = _json_setting(settings, "candidate_seats_json", {})
     if not isinstance(candidate, dict):
         candidate = {}
-    live = P.project_live(votes, candidate)
+    feed_seats = {}
+    raw_seats = feed_party_snapshot(settings).get("seats")
+    if isinstance(raw_seats, dict):
+        for name, value in raw_seats.items():
+            count = _as_int(value)
+            if count is not None and count > 0:
+                feed_seats[str(name)] = count
+    if feed_seats:
+        # Official total_seats, including overhang already in the feed.
+        # The right-bloc total is National + ACT + NZ First from those seats.
+        # A 120-seat House makes the majority line 61, the same threshold as bloc_61.
+        live = P.pack_house(feed_seats, "2026 seats (official feed)")
+        live["source"] = "feed"
+    else:
+        live = P.project_live(votes, candidate)
     return {
         "has_results": live is not None,
         "current": P.current_parliament(settings.get("parliament_2023_json")),
         "live": live,
         "poll": P.poll_projection(settings.get("latest_poll_json")),
     }
+
+
+def party_board_rows(conn, settings: dict) -> list[dict]:
+    """Party vote rows for /api/results and the live board.
+
+    Once the feed has published a count, every party with votes is included,
+    highest share first, and seats are the feed's total_seats. Before that,
+    the historical comparison list is unchanged.
+    """
+    feed = feed_party_snapshot(settings)
+    feed_votes = feed.get("votes") if isinstance(feed.get("votes"), dict) else {}
+    feed_seats = feed.get("seats") if isinstance(feed.get("seats"), dict) else {}
+    counts = feed.get("vote_counts") if isinstance(feed.get("vote_counts"), dict) else {}
+    if not counts:
+        stored = _json_setting(settings, "vote_counts_json", {})
+        counts = stored if isinstance(stored, dict) else {}
+    votes: dict[str, float] = {}
+    for name, value in feed_votes.items():
+        number = _as_float(value)
+        if number is not None:
+            votes[str(name)] = number
+    seats: dict[str, int] = {}
+    for name, value in feed_seats.items():
+        number = _as_int(value)
+        if number is not None:
+            seats[str(name)] = number
+    counted = any(v > 0 for v in votes.values()) or any((_as_float(counts.get(k)) or 0) > 0 for k in counts)
+    if counted:
+        names = []
+        for party, pct in votes.items():
+            raw = _as_float(counts.get(party))
+            if pct > 0 or (raw is not None and raw > 0):
+                names.append(party)
+        names.sort(key=lambda party: (-float(votes.get(party) or 0), -(_as_float(counts.get(party)) or 0), party))
+    else:
+        table_votes, table_seats = W._current_party_numbers(conn)
+        votes = {str(k): float(v) for k, v in table_votes.items()}
+        seats = {}
+        for name, value in table_seats.items():
+            number = _as_int(value)
+            if number is not None:
+                seats[str(name)] = number
+        names = []
+        for party in list(P.HOUSE_ORDER) + list(votes.keys()) + list(P.OFFICIAL_PCT_2023.keys()):
+            if party in names:
+                continue
+            if party not in votes and party not in seats and party not in P.OFFICIAL_PCT_2023:
+                continue
+            names.append(party)
+    rows = []
+    for party in names:
+        now = votes.get(party)
+        base = P.OFFICIAL_PCT_2023.get(party)
+        change = None
+        if now is not None and base is not None:
+            change = round(float(now) - float(base), 2)
+        seat = seats.get(party) if party in seats else None
+        rows.append({
+            "party": party_label(party),
+            "key": party,
+            "votes": counts.get(party),
+            "percent": now,
+            "pct_2023": base,
+            "change_2023": change,
+            "seats": seat,
+            "color": party_color(party),
+            "minor": party_is_compact(party, now),
+        })
+    return rows
 
 
 # ---------- public state ----------
@@ -765,35 +868,11 @@ def api_results():
     conn = D.connect(demo)
     try:
         settings = D.all_settings(conn)
-        votes, seats = W._current_party_numbers(conn)
-        counts = _json_setting(settings, "vote_counts_json", {})
-        if not isinstance(counts, dict):
-            counts = {}
+        rows = party_board_rows(conn, settings)
+        votes = {row["key"]: row["percent"] for row in rows if row.get("percent") is not None}
         electorates = _json_setting(settings, "electorates_json", [])
         if not isinstance(electorates, list):
             electorates = []
-        seen = []
-        for party in list(P.HOUSE_ORDER) + list(votes.keys()) + list(P.OFFICIAL_PCT_2023.keys()):
-            if party in seen:
-                continue
-            if party not in votes and party not in seats and party not in P.OFFICIAL_PCT_2023:
-                continue
-            seen.append(party)
-        rows = []
-        for party in seen:
-            now = votes.get(party)
-            base = P.OFFICIAL_PCT_2023.get(party)
-            change = None
-            if now is not None and base is not None:
-                change = round(float(now) - float(base), 2)
-            rows.append({
-                "party": party,
-                "votes": counts.get(party),
-                "percent": now,
-                "pct_2023": base,
-                "change_2023": change,
-                "seats": seats.get(party),
-            })
         _f = conn.execute("SELECT last_success_at, last_error FROM feed_status WHERE id=1").fetchone()
         feed = dict(_f) if _f else {}
         return jsonify({

@@ -256,10 +256,14 @@ body:has(.tv) { padding: 0; }
 .side-panel p { margin: 0.15em 0 0; }
 .party-bars { display: flex; flex-direction: column; gap: 0.22em; }
 .party-bar {
-  display: grid; grid-template-columns: minmax(6.2em, 24%) 1fr minmax(4.6em, 18%);
+  display: grid; grid-template-columns: minmax(7.5em, 36%) 1fr minmax(6.4em, 24%);
   gap: clamp(6px, 0.45vw, 12px); align-items: center;
   font-size: 0.98em;
 }
+.party-bar .party-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.party-bar .party-fig { text-align: right; font-family: var(--mono); }
+.party-bar.minor { font-size: 0.78em; }
+.party-bar.minor .bar-track { height: 6px; }
 .party-bar .bar-track {
   background: #14233f; border-radius: 8px; height: clamp(10px, 0.72vw, 26px); overflow: hidden;
   border: 1px solid #2a4068;
@@ -746,10 +750,18 @@ html.tv-mode .tv.pot-board .prize {
 }
 html.tv-mode .tv.pot-board .prize:last-child { margin-right: 0; }
 html.tv-mode .tv.pot-board .prize .amt { font-size: 1.35vw; }
+html.tv-mode .tv.pot-board .house-svg { max-height: 18vh; }
 html.tv-mode .tv.pot-board .party-bar {
-  display: block; overflow: hidden; margin: 0 0 0.35vh; font-size: 1.05vw;
+  display: block; overflow: hidden; margin: 0 0 0.28vh; font-size: 1.02vw;
 }
 html.tv-mode .tv.pot-board .party-bar > * { display: inline-block; vertical-align: middle; }
+html.tv-mode .tv.pot-board .party-bar .party-name { width: 42%; }
+html.tv-mode .tv.pot-board .party-bar .bar-track { width: 28%; height: 0.7vh; }
+html.tv-mode .tv.pot-board .party-bar .party-fig { width: 27%; text-align: right; }
+html.tv-mode .tv.pot-board .party-bar.minor {
+  font-size: 0.72vw; margin: 0 0 0.08vh;
+}
+html.tv-mode .tv.pot-board .party-bar.minor .bar-track { height: 0.35vh; }
 html.tv-mode .tv.pot-board #leaders,
 html.tv-mode .tv.pot-board #publicLeaders {
   display: block; height: auto; max-height: none; overflow: hidden;
