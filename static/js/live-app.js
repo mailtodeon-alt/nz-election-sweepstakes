@@ -2,13 +2,9 @@ window.__liveModern = true;
 let prevRanks = {};
 let prevLeaderId = null;
 let state = null;
-let publicState = null;
-const publicBoard = PublicBoard.create({
-  list: document.getElementById('publicLeaders'),
-  note: document.getElementById('liveListNote'),
-  toggle: document.getElementById('liveShowAll'),
-  search: document.getElementById('livePlayerSearch'),
-});
+let boardQuery = '';
+const searchEl = document.getElementById('livePlayerSearch');
+if (searchEl) searchEl.addEventListener('input', () => { boardQuery = searchEl.value || ''; render(); });
 let soundOn = localStorage.getItem('sweep_sound') === '1';
 const soundBtn = document.getElementById('soundBtn');
 function syncSoundBtn(){ soundBtn.textContent = soundOn ? '🔊 Sound on' : '🔊 Sound off'; }
@@ -188,7 +184,6 @@ function render() {
     document.getElementById('recapLink').href = '/demo/recap';
     document.getElementById('coalitionLink').href = '/demo/coalition';
     document.getElementById('boardLink').href = '/demo/live';
-    document.getElementById('publicBoardLink').href = '/demo/open/live';
   }
   renderLatest(state.latest_count);
   renderEstimate(state.projection);
@@ -197,7 +192,6 @@ function render() {
     ? ('Biggest mover: ' + Night.unescapeHtml(mover.name) + ' ' + mover.from_place + ' → ' + mover.to_place)
     : 'Biggest mover appears after two saved counts.';
   if (view === 'ranks') Night.loadChart('pot', 'rankChart');
-  if (publicState) publicBoard.setPlayers(publicState.leaderboard, !!publicState.locked);
   if (!tvMode && state.settings.weekend_mode === '1') startWeekendRotate();
   const avgCard = document.getElementById('avgCard');
   const cmp = state.compare_averages || {};
@@ -212,7 +206,13 @@ function render() {
 
   const list = document.getElementById('leaders');
   const doFlip = flipAnimate();
-  const board = state.leaderboard.slice().sort((a,b) => (a.place||a.rank||99) - (b.place||b.rank||99) || b.total - a.total);
+  const source = state.combined_leaderboard || state.leaderboard;
+  let board = source.slice().sort((a,b) => (a.place||a.rank||99) - (b.place||b.rank||99) || b.total - a.total);
+  const q = boardQuery.trim().toLowerCase();
+  if (q) board = board.filter((row) => String(row.name || '').toLowerCase().indexOf(q) !== -1);
+  const note = document.getElementById('liveListNote');
+  if (note) note.textContent = q ? (board.length + (board.length === 1 ? ' match' : ' matches')) : ('All ' + source.length);
+  if (searchEl) searchEl.hidden = source.length <= 10 && !q;
 
   // NEW LEADER takeover
   if (state.locked && board.length) {
@@ -238,6 +238,7 @@ function render() {
       else delta = `<div class="delta" style="color:var(--muted)">—</div>`;
     }
     const outTag = (state.locked && row.still_in_it === false) ? '<span class="tag-out">OUT</span>' : '';
+    const potTag = row.pool === 'pot' ? '<span class="tag-pot">POT</span>' : '';
     const spoon = (state.locked && row.is_last) ? '<span class="spoon" title="Wooden spoon">On morning dishes 🍽️</span>' : '';
     const maxBits = state.locked ? ` · max ${row.max_possible_now == null ? '—' : row.max_possible_now}` : '';
     const prize = row.prize ? ` · $${row.prize}` : '';
@@ -249,7 +250,7 @@ function render() {
     }
     el.innerHTML = `
       <div class="pos">${place}</div>
-      <div><div class="name">${row.name}${outTag}${spoon}</div>
+      <div><div class="name">${row.name}${potTag}${outTag}${spoon}</div>
         <div class="sub">${row.submitted ? 'Ballot in' : 'No ballot yet'}${maxBits}${prize}</div>${bw}</div>
       <div style="text-align:right">
         <div class="pts">${state.locked ? row.total : '—'}</div>
@@ -308,11 +309,7 @@ function render() {
 }
 
 async function load() {
-  const pot = Sweep.api('/api/state');
-  const pub = Sweep.api('/api/open/state');
-  state = await pot;
-  publicState = await pub;
-  await publicBoard.resolveMe();
+  state = await Sweep.api('/api/state');
   render();
 }
 load();

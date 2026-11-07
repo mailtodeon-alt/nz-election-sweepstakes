@@ -35,6 +35,11 @@
   </div>
   <h2 style="margin:18px 0 8px">Latest headlines</h2>
   <div id="homeNews" class="news-strip"></div>
+  <div class="card" id="homeBoardCard">
+    <h3 style="margin-top:0">Leaderboard</h3>
+    <p class="muted" id="homeBoardNote">Everyone on one board. Pot players are marked.</p>
+    <div id="homeLeaders" class="leader-list"></div>
+  </div>
   <div class="card">
     <h3>How scoring works</h3>
     <ul class="muted">
@@ -81,6 +86,43 @@ function paintHome(s) {
   House.mount(document.getElementById('homeHouse'), s.house);
   House.mountBefore(document.getElementById('homeBefore'), s.advance, s.house && s.house.has_results);
   House.mountNews(document.getElementById('homeNews'), s.headlines);
+  paintHomeBoard(s);
+}
+function unescapeHtml(s) {
+  const t = document.createElement('textarea');
+  t.innerHTML = s || '';
+  return t.value;
+}
+function paintHomeBoard(s) {
+  const list = document.getElementById('homeLeaders');
+  if (!list) return;
+  const rows = (s.combined_leaderboard || []).slice().sort((a, b) => (a.place || 99) - (b.place || 99));
+  list.textContent = '';
+  rows.forEach((row) => {
+    const el = document.createElement('div');
+    el.className = 'leader-row' + ((row.place || 0) === 1 ? ' first' : '');
+    const pos = document.createElement('div');
+    pos.className = 'pos';
+    pos.textContent = row.place || '';
+    const mid = document.createElement('div');
+    const name = document.createElement('div');
+    name.className = 'name';
+    name.textContent = unescapeHtml(row.name);
+    if (row.pool === 'pot') {
+      const tag = document.createElement('span');
+      tag.className = 'tag-pot';
+      tag.textContent = 'POT';
+      name.appendChild(tag);
+    }
+    mid.appendChild(name);
+    const pts = document.createElement('div');
+    pts.className = 'pts';
+    pts.textContent = s.locked ? String(row.total) : '—';
+    el.appendChild(pos);
+    el.appendChild(mid);
+    el.appendChild(pts);
+    list.appendChild(el);
+  });
 }
 function loadHome() { Sweep.api('/api/state').then(paintHome).catch(() => {}); }
 loadHome();
