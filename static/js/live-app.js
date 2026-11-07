@@ -371,15 +371,15 @@ function renderLeadChanges(events) {
 function renderElectorates(data) {
   const panel = document.getElementById('electoratesPanel');
   if (!panel) return;
-  const tvBoard = document.documentElement.classList.contains('tv-board');
+  const fit = document.documentElement.classList.contains('tv-mode');
   const closeBox = document.getElementById('closeSeats');
   const board = document.getElementById('electorateBoard');
   if (!closeBox || !board) return;
   let rows = (data && data.electorates) || [];
   let close = (data && data.close) || [];
-  if (tvBoard) {
-    close = close.slice(0, 4);
-    rows = rows.slice(0, 6);
+  if (fit) {
+    close = close.slice(0, 3);
+    rows = [];
   }
   if (!rows.length && !close.length) {
     closeBox.innerHTML = '<h3>Close seats</h3><p class="muted">Closest electorates appear as the count comes in.</p>';

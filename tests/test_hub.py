@@ -258,6 +258,17 @@ def test_electorate_bundle_close_seats_and_api():
     assert "tv-board" in CLIENT.get("/tv").get_data(as_text=True)
 
 
+def test_fitted_board_keeps_the_house_chart():
+    css = (ROOT / "static/css/app.css").read_text()
+    hidden = css.split("view-board #newsStrip", 1)[1].split("{", 1)[0]
+    assert "#houseHero" not in hidden
+    shown = css.split("view-board #houseHero", 1)[1][:220]
+    assert "display: block" in shown
+    page = (ROOT / "static/live.html").read_text()
+    assert page.index('id="houseHero"') < page.index('id="electoratesPanel"')
+    assert "fit-bottom" in page
+
+
 def test_lead_change_event_and_banner():
     os.environ["SWEEP_NOW"] = "2026-11-07T18:30:00+13:00"
     conn = D.connect(False)
@@ -342,6 +353,7 @@ if __name__ == "__main__":
     test_news_parse_dedupe_and_skip_stub()
     test_electorate_leader_and_maori_region()
     test_electorate_bundle_close_seats_and_api()
+    test_fitted_board_keeps_the_house_chart()
     test_lead_change_event_and_banner()
     test_auto_enable_waits_for_lock_instant()
     test_pages_and_status()
