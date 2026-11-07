@@ -163,6 +163,13 @@ def test_pages():
     assert "NZ Election Night Sweepstakes" in tv or "tv-title" in tv
     assert "SMART-TV" in tv
     assert "SamsungBrowser" in tv
+    app_js = CLIENT.get("/static/js/live-app.js").get_data(as_text=True)
+    assert "startTvRotate" not in app_js
+    assert "tvMode ? 'board'" in app_js
+    es5 = CLIENT.get("/static/js/live-es5.js").get_data(as_text=True)
+    assert "function holdBoard()" in es5
+    assert "view-board" in es5
+    assert "setInterval(tick, 15000)" in es5
     assert "Public leaderboard" in live
     open_live = expect(CLIENT.get("/open/live"), 200)
     assert "Show all" in open_live
