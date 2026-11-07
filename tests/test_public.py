@@ -171,7 +171,12 @@ def test_pages():
     assert "paintParties" in es5
     assert "view-board" in es5
     assert "setInterval(tick, 15000)" in es5
-    assert "Public leaderboard" in live
+    assert "Prize pool" in live
+    assert "tag-pot" in live
+    assert 'id="homeLeaders"' in home
+    assert "combined_leaderboard" in app_js
+    assert "tag-pot" in es5
+    assert "publicLeaders" not in es5
     open_live = expect(CLIENT.get("/open/live"), 200)
     assert "Show all" in open_live
     assert 'id="playerSearch"' in open_live
@@ -434,6 +439,21 @@ def test_pot_and_public_stay_separated():
     assert loser["max_possible_now"] == 0
     assert any(r["is_last"] for r in pot["leaderboard"])
     assert fun["id"] not in {r["player_id"] for r in pot["leaderboard"]}
+
+    board = pot["combined_leaderboard"]
+    leader_all = next(r for r in board if r["player_id"] == pots[1]["id"])
+    fun_all = next(r for r in board if r["player_id"] == fun["id"])
+    assert leader_all["pool"] == "pot"
+    assert leader_all["prize"] == 100
+    assert leader_all["total"] == fun_all["total"] == 100
+    assert leader_all["place"] == fun_all["place"] == 1
+    assert fun_all["pool"] == "public"
+    assert "prize" not in fun_all
+    assert sum(1 for r in board if r["pool"] == "pot") == 6
+    page = expect(CLIENT.get("/live"), 200)
+    assert "tag-pot" in page
+    assert "FunOnlyBob" in page
+    assert 'id="publicLeaders"' not in page
 
     pub = expect(CLIENT.get("/api/open/state"), 200)
     assert [r["name"] for r in pub["leaderboard"]] == ["FunOnlyBob"]

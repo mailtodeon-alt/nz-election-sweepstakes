@@ -15,7 +15,6 @@
       '<script src="/static/js/common.js"><\/script>' +
       '<script src="/static/js/house.js"><\/script>' +
       '<script src="/static/js/night.js"><\/script>' +
-      '<script src="/static/js/public-board.js"><\/script>' +
       '<script src="/static/js/live-app.js"><\/script>'
     );
   }
@@ -47,9 +46,10 @@
     var sub = row.submitted ? 'Ballot in' : 'No ballot yet';
     var pts = locked ? row.total : '\u2014';
     var first = place === 1 ? ' first' : '';
+    var pot = row.pool === 'pot' ? '<span class="tag-pot">POT</span>' : '';
     return '<div class="leader-row' + first + '">' +
       '<div class="pos">' + place + '</div>' +
-      '<div><div class="name">' + esc(row.name) + '</div>' +
+      '<div><div class="name">' + esc(row.name) + pot + '</div>' +
       '<div class="sub">' + sub + '</div></div>' +
       '<div style="text-align:right"><div class="pts">' + esc(pts) + '</div></div></div>';
   }
@@ -131,7 +131,12 @@
     var demo = location.pathname.indexOf('/demo') === 0 ? '?demo=1' : '';
     xhrJson('/api/state' + demo, function (pot) {
       if (!pot) return;
-      paint(document.getElementById('leaders'), pot.leaderboard || [], !!pot.locked, 0);
+      var board = pot.combined_leaderboard || pot.leaderboard || [];
+      paint(document.getElementById('leaders'), board, !!pot.locked, 0);
+      var note = document.getElementById('liveListNote');
+      if (note) note.innerHTML = 'All ' + board.length;
+      var search = document.getElementById('livePlayerSearch');
+      if (search) search.style.display = board.length > 10 ? '' : 'none';
       var cd = document.getElementById('countdown');
       if (cd && pot.settings) cd.innerHTML = countdown(pot.settings.lock_at, pot.locked);
       var reporting = document.getElementById('reporting');
@@ -153,17 +158,6 @@
         }
         box.innerHTML = html;
       }
-    });
-    xhrJson('/api/open/state' + demo, function (pub) {
-      if (!pub) return;
-      var rows = pub.leaderboard || [];
-      paint(document.getElementById('publicLeaders'), rows, !!pub.locked, rows.length > 10 ? 10 : 0);
-      var search = document.getElementById('livePlayerSearch');
-      var toggle = document.getElementById('liveShowAll');
-      if (search) search.style.display = rows.length > 10 ? '' : 'none';
-      if (toggle) toggle.style.display = rows.length > 10 ? '' : 'none';
-      var note = document.getElementById('liveListNote');
-      if (note) note.innerHTML = rows.length > 10 ? ('Top 10 of ' + rows.length) : ('All ' + rows.length);
     });
   }
   bootModern();

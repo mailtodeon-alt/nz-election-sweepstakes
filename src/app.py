@@ -227,6 +227,127 @@ def build_leaderboard(conn, pool=D.POOL_POT):
     return enrich_leaderboard(ranked, questions), questions, players, results_raw
 
 
+def _placeholder_rows(conn, pool, questions):
+    pending = sum(int(q["max_points"]) for q in questions)
+    rows = []
+    for p in D.list_players(conn, pool=pool):
+        own = D.get_predictions(conn, p["id"])
+        submitted = any(v not in (None, "") for v in own.values()) or bool(p.get("tb_national_vote"))
+        rows.append({
+            "player_id": p["id"],
+            "name": p["name"],
+            "slot": p["slot"],
+            "pool": pool,
+            "submitted": submitted,
+            "total": 0,
+            "available": 0,
+            "pending_max": pending,
+            "max_possible": pending,
+            "max_possible_now": pending,
+            "still_in_it": True,
+            "is_last": False,
+            "best_call": None,
+            "worst_call": None,
+            "detail": [],
+            "tb_national_vote": p.get("tb_national_vote"),
+        })
+    return rows
+
+
+def _tb_err(row):
+    err = row.get("tb_error")
+    if err is None or err == "":
+        return float("inf")
+    try:
+        return float(err)
+    except (TypeError, ValueError):
+        return float("inf")
+
+
+def merge_leaderboards(pot_rows, pub_rows, locked):
+    """Rank pot and public players on one board.
+
+    Same ordering as the pot: higher score, then closer National vote guess,
+    then name. Prize, wooden spoon, and the pot-only `leaderboard` are untouched.
+    """
+    rows = []
+    for row in pot_rows or []:
+        item = dict(row)
+        item["pool"] = D.POOL_POT
+        rows.append(item)
+    for row in pub_rows or []:
+        item = dict(row)
+        item["pool"] = D.POOL_PUBLIC
+        item.pop("prize", None)
+        item["is_last"] = False
+        rows.append(item)
+    if not locked:
+        rows.sort(key=lambda s: (str(s.get("name") or "").lower(), int(s.get("player_id") or 0)))
+        for i, row in enumerate(rows):
+            row["rank"] = i + 1
+            row["place"] = i + 1
+        return rows
+    rows.sort(key=lambda s: (-int(s.get("total") or 0), _tb_err(s), str(s.get("name") or "")))
+    places = []
+    i = 0
+    n = len(rows)
+    while i < n:
+        j = i + 1
+        while (
+            j < n
+            and int(rows[j].get("total") or 0) == int(rows[i].get("total") or 0)
+            and _tb_err(rows[j]) == _tb_err(rows[i])
+        ):
+            j += 1
+        for _ in range(i, j):
+            places.append(i + 1)
+        i = j
+    leader = max((int(r.get("total") or 0) for r in rows), default=0)
+    for idx, row in enumerate(rows):
+        row["rank"] = idx + 1
+        row["place"] = places[idx]
+        max_now = int(row.get("total") or 0) + int(row.get("pending_max") or 0)
+        row["still_in_it"] = max_now >= leader
+        if row["pool"] != D.POOL_POT:
+            row.pop("prize", None)
+            row["is_last"] = False
+    return rows
+
+
+def combined_board(conn):
+    """Display board for /live, /tv, and home. Pot prizes stay on the pot rows."""
+    locked = D.entries_locked(conn)
+    questions = D.list_questions(conn)
+    if not locked:
+        return merge_leaderboards(
+            _placeholder_rows(conn, D.POOL_POT, questions),
+            _placeholder_rows(conn, D.POOL_PUBLIC, questions),
+            False,
+        )
+    pot, questions, _players, results_raw = build_leaderboard(conn, pool=D.POOL_POT)
+    pub, _q2, _p2, _r2 = build_leaderboard(conn, pool=D.POOL_PUBLIC)
+    nat = national_actual_from_results(conn, questions, {k: v["value"] for k, v in results_raw.items()})
+    pub = enrich_leaderboard(N.public_rows_with_side_bets(pub, conn, nat), questions)
+    for row in pub:
+        row.pop("prize", None)
+        row["is_last"] = False
+    mode = D.get_setting(conn, "board_mode") or "live"
+    if mode in ("frozen", "official"):
+        kind = "official" if mode == "official" else "election_night"
+        snap_row = conn.execute(
+            "SELECT payload_json FROM snapshots WHERE kind=? ORDER BY id DESC LIMIT 1",
+            (kind,),
+        ).fetchone()
+        if snap_row:
+            try:
+                snapped = json.loads(snap_row["payload_json"]).get("leaderboard") or []
+            except Exception:
+                snapped = []
+            if snapped:
+                pot = snapped
+    return merge_leaderboards(pot, pub, True)
+
+
 def record_results_history(conn) -> None:
     """Store the score each board is showing after a results change.
 
@@ -326,24 +447,21 @@ def play_page(token):
     return send_from_directory(ROOT / "static", "play.html")
 
 
-def _board_rows_html(conn, pool: str, limit: int | None = None) -> str:
+def _board_rows_html(rows, locked: bool) -> str:
     """Static rows so the board is visible when the TV browser cannot run the app script."""
-    ranked, _questions, _players, _results = build_leaderboard(conn, pool=pool)
-    locked = D.entries_locked(conn)
-    rows = sorted(ranked, key=lambda row: (row.get("place") or row.get("rank") or 99, str(row.get("name") or "")))
-    if limit:
-        rows = rows[:limit]
+    ordered = sorted(rows, key=lambda row: (row.get("place") or row.get("rank") or 99, str(row.get("name") or "")))
     parts = []
-    for i, row in enumerate(rows):
+    for i, row in enumerate(ordered):
         place = row.get("place") or row.get("rank") or (i + 1)
         name = html.escape(html.unescape(str(row.get("name") or "")), quote=True)
+        badge = '<span class="tag-pot">POT</span>' if row.get("pool") == D.POOL_POT else ""
         sub = "Ballot in" if row.get("submitted") else "No ballot yet"
         pts = str(row.get("total") if locked else "—")
         first = " first" if place == 1 else ""
         parts.append(
             f'<div class="leader-row{first}">'
             f'<div class="pos">{place}</div>'
-            f'<div><div class="name">{name}</div><div class="sub">{sub}</div></div>'
+            f'<div><div class="name">{name}{badge}</div><div class="sub">{sub}</div></div>'
             f'<div style="text-align:right"><div class="pts">{html.escape(pts)}</div></div>'
             f"</div>"
         )
@@ -354,12 +472,11 @@ def _live_html(demo: bool) -> Response:
     raw = (ROOT / "static" / "live.html").read_text(encoding="utf-8")
     conn = D.connect(demo)
     try:
-        pot_rows = _board_rows_html(conn, D.POOL_POT)
-        public = build_leaderboard(conn, pool=D.POOL_PUBLIC)[0]
-        pub_rows = _board_rows_html(conn, D.POOL_PUBLIC, limit=10 if len(public) > 10 else None)
+        locked = D.entries_locked(conn)
+        board_rows = _board_rows_html(combined_board(conn), locked)
     finally:
         conn.close()
-    page = raw.replace("<!--POT_ROWS-->", pot_rows).replace("<!--PUBLIC_ROWS-->", pub_rows)
+    page = raw.replace("<!--BOARD_ROWS-->", board_rows)
     return Response(page, mimetype="text/html")
 
 
@@ -687,6 +804,7 @@ def assemble_state(conn, demo: bool, pool: str) -> dict:
         "parties": party_board_rows(conn, settings),
         "advance": advance_public(settings),
         "headlines": headlines_public(settings, limit=4),
+        "combined_leaderboard": combined_board(conn) if pool == D.POOL_POT else None,
     }
 
 
