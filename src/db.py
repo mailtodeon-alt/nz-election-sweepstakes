@@ -98,6 +98,9 @@ DEFAULT_SETTINGS = {
     "electorates_json": "[]",
     "candidate_seats_json": "{}",
     "vote_counts_json": "{}",
+    # Full party vote and total_seats from the media feed. Display only.
+    # Question results and party_table_json stay the scoring inputs.
+    "feed_party_json": "{}",
     "feed_manual_off": "0",
 }
 
@@ -191,6 +194,21 @@ def connect(demo: bool = False) -> Conn:
 
 
 def now_nz() -> datetime:
+    """Current time in New Zealand.
+
+    Tests set SWEEP_NOW (ISO-8601) so a run after the 7pm lock still sees
+    the clock they intend. Unset in production.
+    """
+    override = (os.environ.get("SWEEP_NOW") or "").strip()
+    if override:
+        try:
+            dt = datetime.fromisoformat(override)
+        except ValueError:
+            dt = None
+        if dt is not None:
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=NZ)
+            return dt
     return datetime.now(NZ)
 
 

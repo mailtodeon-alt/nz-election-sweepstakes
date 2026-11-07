@@ -76,6 +76,21 @@ def test_derive():
     assert d["bloc_61"] == "Yes"  # 46+11+8=65
     assert d["minor_highest"] == "Green"
 
+def test_minor_highest_counts_top():
+    """TOP is a ballot choice. A higher Opportunity Party share still scores as TOP."""
+    d = derive_from_party_table(
+        {"National": 40.0, "Labour": 28.0, "Green": 4.0, "ACT": 3.5, "NZ First": 3.0, "Te Pāti Māori": 2.0, "TOP": 5.59},
+        {"National": 48, "Labour": 34, "Green": 10, "ACT": 8, "NZ First": 7, "Te Pāti Māori": 4, "TOP": 7},
+    )
+    assert d["minor_highest"] == "TOP"
+    assert d["bloc_61"] == "Yes"  # 48+8+7
+    assert d["parties_in"] == 7
+    alias = derive_from_party_table(
+        {"Green": 4.0, "ACT": 3.0, "NZ First": 2.0, "Te Pāti Māori": 1.0, "Opportunity": 5.59},
+        {"Green": 5, "ACT": 4, "NZ First": 3, "Te Pāti Māori": 2, "Opportunity": 7},
+    )
+    assert alias["minor_highest"] == "TOP"
+
 if __name__ == "__main__":
     test_boundaries_fall_in_higher_band()
     test_band_scoring_adjacent()
@@ -85,4 +100,5 @@ if __name__ == "__main__":
     test_tiebreak_national_exact()
     test_equal_place_splits()
     test_derive()
+    test_minor_highest_counts_top()
     print("ALL SCORING TESTS PASSED")

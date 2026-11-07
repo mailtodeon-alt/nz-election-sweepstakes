@@ -78,6 +78,45 @@
     if (d > 0) return d + 'd ' + h + 'h ' + m + 'm';
     return h + ':' + (m < 10 ? '0' : '') + m;
   }
+  function paintParties(rows) {
+    var box = document.getElementById('partyBars');
+    var card = document.getElementById('partyCard');
+    if (!box) return;
+    var ballot = { National: 1, Labour: 1, Green: 1, ACT: 1, 'NZ First': 1, 'Te P\u0101ti M\u0101ori': 1 };
+    var fromFeed = false;
+    var i;
+    for (i = 0; i < rows.length; i++) {
+      if (rows[i].seats != null) fromFeed = true;
+      if (rows[i].percent != null && rows[i].key && !ballot[rows[i].key]) fromFeed = true;
+    }
+    var shown = [];
+    if (fromFeed) {
+      for (i = 0; i < rows.length; i++) {
+        var pct = parseFloat(rows[i].percent);
+        if (rows[i].percent == null || isNaN(pct) || pct <= 0) continue;
+        shown.push(rows[i]);
+      }
+    }
+    if (!shown.length) {
+      if (card) card.style.display = 'none';
+      box.innerHTML = '';
+      return;
+    }
+    if (card) card.style.display = '';
+    var html = '';
+    for (i = 0; i < shown.length; i++) {
+      var row = shown[i];
+      var v = parseFloat(row.percent);
+      var w = Math.min(100, v * 2);
+      var cls = row.minor ? 'party-bar minor' : 'party-bar';
+      var seats = row.seats == null ? '' : (' \u00b7 ' + row.seats);
+      var name = row.party || row.key || '';
+      html += '<div class="' + cls + '"><div class="party-name" title="' + esc(name) + '">' + esc(name) + '</div>' +
+        '<div class="bar-track"><div class="bar-fill" style="width:' + w + '%;background:' + esc(row.color || '#8fa3c8') + '"></div></div>' +
+        '<div class="party-fig">' + v.toFixed(1) + '%' + esc(seats) + '</div></div>';
+    }
+    box.innerHTML = html;
+  }
   function holdBoard() {
     var tv = document.getElementById('tv');
     if (!tv || !tv.classList) return;
@@ -99,6 +138,7 @@
       if (reporting && pot.settings) {
         reporting.innerHTML = pot.settings.reporting_pct ? (pot.settings.reporting_pct + '% of voting places') : '\u2014';
       }
+      paintParties(pot.parties || []);
       var latest = pot.latest_count;
       var box = document.getElementById('latestBody');
       if (box && latest) {

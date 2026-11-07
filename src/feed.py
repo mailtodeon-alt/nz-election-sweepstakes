@@ -90,6 +90,44 @@ CANONICAL = {
     "the opportunity party": "TOP",
 }
 
+# Ballot parties stay full-size on the TV. TOP is the Opportunity Party;
+# the ballot choice is still the key "TOP".
+BALLOT_PARTIES = ("National", "Labour", "Green", "ACT", "NZ First", "Te Pāti Māori")
+PARTY_COLORS = {
+    "National": "#00529F",
+    "Labour": "#D82A20",
+    "Green": "#098137",
+    "ACT": "#F5C518",
+    "NZ First": "#888888",
+    "Te Pāti Māori": "#B2001D",
+    "TOP": "#32b5e8",
+}
+_OTHER_COLORS = ("#c4b5fd", "#f9a8d4", "#fdba74", "#86efac", "#93c5fd", "#fca5a5", "#fde68a", "#a5b4fc")
+
+
+def party_label(key: str) -> str:
+    """Name on the party-vote board. Scoring still uses the key, including TOP."""
+    if key == "TOP":
+        return "Opportunity (TOP)"
+    return key
+
+
+def party_color(key: str) -> str:
+    if key in PARTY_COLORS:
+        return PARTY_COLORS[key]
+    total = sum(ord(ch) for ch in (key or ""))
+    return _OTHER_COLORS[total % len(_OTHER_COLORS)]
+
+
+def party_is_compact(key: str, percent: Any) -> bool:
+    """Smaller row for a long-tail party. Ballot parties and TOP stay full size."""
+    if key in BALLOT_PARTIES or key == "TOP":
+        return False
+    try:
+        return float(percent) < 5.0
+    except (TypeError, ValueError):
+        return True
+
 
 class FeedPoller:
     def __init__(self, broadcast_fn=None, on_applied=None):
@@ -350,6 +388,13 @@ class FeedPoller:
                 D.set_setting(conn, "candidate_seats_json", json.dumps(parsed["candidate_seats"]))
             if parsed.get("vote_counts"):
                 D.set_setting(conn, "vote_counts_json", json.dumps(parsed["vote_counts"]))
+            # Display snapshot. Question rows above stay the scoring source,
+            # so a manual ballot result is not replaced by this table.
+            D.set_setting(conn, "feed_party_json", json.dumps({
+                "votes": parsed.get("votes") or {},
+                "seats": parsed.get("seats") or {},
+                "vote_counts": parsed.get("vote_counts") or {},
+            }))
             if parsed.get("electorates"):
                 D.set_setting(conn, "electorates_json", json.dumps(parsed["electorates"]))
 
@@ -398,7 +443,11 @@ def canonical_party(name: str) -> Optional[str]:
 
 
 def parties_from_xml(body: bytes) -> dict[str, str]:
-    """Map p_no → canonical party name from a parties.xml document."""
+    """Map p_no → party key from a parties.xml document.
+
+    Known parties use the scoring key (Opportunity Party → TOP). Every other
+    party keeps its short name so a party with votes is not dropped.
+    """
     try:
         root = ET.fromstring(body)
     except ET.ParseError:
@@ -408,10 +457,10 @@ def parties_from_xml(body: bytes) -> dict[str, str]:
         if el.tag.split("}")[-1].lower() != "party":
             continue
         pno = el.attrib.get("p_no") or el.attrib.get("pno")
-        label = el.findtext("short_name") or el.findtext("party_name") or el.attrib.get("name") or ""
+        label = (el.findtext("short_name") or el.findtext("party_name") or el.attrib.get("name") or "").strip()
         canon = canonical_party(label)
-        if pno and canon:
-            out[str(pno)] = canon
+        if pno and (canon or label):
+            out[str(pno)] = canon or label
     return out
 
 
@@ -577,10 +626,12 @@ def parse_election_xml(body: bytes, parties_body: Optional[bytes] = None, electo
             continue
         pno = el.attrib.get("p_no") or el.attrib.get("pno")
         attrs = {k.lower(): v for k, v in el.attrib.items()}
-        name = (
-            (pno_map.get(str(pno)) if pno else None)
-            or canonical_party(attrs.get("party") or attrs.get("name") or attrs.get("partyname") or el.findtext("Party") or el.findtext("Name") or el.findtext("short_name") or "")
-        )
+        raw = (
+            attrs.get("party") or attrs.get("name") or attrs.get("partyname")
+            or el.findtext("Party") or el.findtext("Name") or el.findtext("short_name")
+            or ""
+        ).strip()
+        name = (pno_map.get(str(pno)) if pno else None) or canonical_party(raw) or raw
         if not name:
             continue
         vote = el.findtext("percent_votes") or attrs.get("partyvote") or attrs.get("percentage") or el.findtext("Percentage") or el.findtext("PartyVote")

@@ -120,7 +120,8 @@ window.House = (function () {
         swatch.style.background = '#6b7280';
         swatch.style.boxShadow = '0 0 0 1px #ffffff';
       }
-      span.append(swatch, document.createTextNode(party + ' ' + n));
+      var label = party === 'TOP' ? 'Opportunity (TOP)' : party;
+      span.append(swatch, document.createTextNode(label + ' ' + n));
       box.appendChild(span);
     });
     host.appendChild(box);
